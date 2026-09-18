@@ -1,0 +1,559 @@
+# Metrics Service
+
+Below is a complete, self-contained TypeScript 5 service. It uses only the Node.js standard library (no third‑party schema or HTTP libraries), so it runs anywhere Node 18+ is available.
+
+## File tree
+
+```
+metrics-service/
+├── package.json
+├── tsconfig.json
+├── tsconfig.test.json
+├── README.md
+└── src/
+    ├── types.ts
+    ├── parser.ts
+    ├── stats.ts
+    ├── store.ts
+    ├── service.ts
+    ├── server.ts
+    └── index.ts
+```
+
+---
+
+## `package.json`
+
+```json
+{
+  "name": "metrics-service",
+  "version": "1.0.0",
+  "description": "Newline-delimited request-metrics ingestion, validation, and aggregation service",
+  "type": "module",
+  "main": "dist/index.js",
+  "scripts": {
+    "build": "tsc -p tsconfig.json",
+    "start": "node dist/index.js",
+    "dev": "tsx src/index.ts",
+    "test": "node --test --import tsx --test-reporter spec dist-test/**/*.test.js",
+    "test:build": "tsc -p tsconfig.test.json && node --test dist-test/**/*.test.js",
+    "typecheck": "tsc -p tsconfig.json --noEmit"
+  },
+  "engines": {
+    "node": ">=18.0.0"
+  },
+  "devDependencies": {
+    "@types/node": "^20.11.0",
+    "tsx": "^4.7.0",
+    "typescript": "^5.3.3"
+  }
+}
+```
+
+---
+
+## `tsconfig.json`
+
+```json
+{
+  "compilerOptions": {
+    "target": "ES2022",
+    "module": "Node16",
+    "moduleResolution": "Node16",
+    "lib": ["ES2022"],
+    "outDir": "dist",
+    "rootDir": "src",
+    "strict": true,
+    "noUncheckedIndexedAccess": true,
+    "noImplicitOverride": true,
+    "noFallthroughCasesInSwitch": true,
+    "exactOptionalPropertyTypes": true,
+    "forceConsistentCasingInFileNames": true,
+    "esModuleInterop": true,
+    "skipLibCheck": true,
+    "declaration": true,
+    "sourceMap": true,
+    "resolveJsonModule": true,
+    "isolatedModules": true
+  },
+  "include": ["src/**/*.ts"],
+  "exclude": ["node_modules", "dist", "dist-test"]
+}
+```
+
+---
+
+## `tsconfig.test.json`
+
+```json
+{
+  "extends": "./tsconfig.json",
+  "compilerOptions": {
+    "outDir": "dist-test",
+    "rootDir": "src",
+    "declaration": false,
+    "sourceMap": false
+  },
+  "include": ["src/**/*.ts"]
+}
+```
+
+---
+
+## `src/types.ts`
+
+```typescript
+/**
+ * Strict domain types for the metrics service.
+ * No third-party schema libraries are used; validation is hand-rolled
+ * in `parser.ts` and produces instances of these types.
+ */
+
+// ─── Raw wire format ────────────────────────────────────────────────────────
+
+/**
+ * A single newline-delimited JSON record as it arrives on the wire.
+ * All fields are optional at the raw level so the validator can report
+ * precisely which fields are missing or malformed.
+ */
+export interface RawMetricRecord {
+  /** Unique run identifier (string, non-empty). */
+  runId?: unknown;
+  /** Model name (string, non-empty). */
+  model?: unknown;
+  /** Fixture / test-case name (string, non-empty). */
+  fixture?: unknown;
+  /** Wall-clock timestamp in ISO-8601 (string, parseable). */
+  timestamp?: unknown;
+  /** Request latency in milliseconds (finite number ≥ 0). */
+  latencyMs?: unknown;
+  /** HTTP status code (integer 100–599). */
+  statusCode?: unknown;
+  /** Request method (string, one of the known HTTP verbs). */
+  method?: unknown;
+  /** Request path (string, non-empty, starts with '/'). */
+  path?: unknown;
+}
+
+// ─── Validated domain model ─────────────────────────────────────────────────
+
+/** Known HTTP methods accepted by the validator. */
+export const HTTP_METHODS: readonly string[] = [
+  'GET', 'POST', 'PUT', 'PATCH', 'DELETE', 'HEAD', 'OPTIONS',
+] as const;
+
+export type HttpMethod = (typeof HTTP_METHODS)[number];
+
+/**
+ * A fully validated metric record.
+ * Every field is present and type-checked.
+ */
+export interface MetricRecord {
+  runId: string;
+  model: string;
+  fixture: string;
+  /** Parsed epoch milliseconds. */
+  timestamp: number;
+  latencyMs: number;
+  statusCode: number;
+  method: HttpMethod;
+  path: string;
+}
+
+// ─── Validation errors ──────────────────────────────────────────────────────
+
+export type ValidationErrorCode =
+  | 'NOT_OBJECT'
+  | 'MISSING_FIELD'
+  | 'WRONG_TYPE'
+  | 'INVALID_VALUE'
+  | 'UNKNOWN_FIELD';
+
+export interface ValidationError {
+  code: ValidationErrorCode;
+  field: string;
+  message: string;
+}
+
+export interface ParseResult {
+  ok: boolean;
+  record?: MetricRecord;
+  errors: ValidationError[];
+}
+
+// ─── Aggregation ────────────────────────────────────────────────────────────
+
+export interface GroupKey {
+  model: string;
+  fixture: string;
+}
+
+export interface GroupStats {
+  model: string;
+  fixture: string;
+  count: number;
+  mean: number;
+  median: number;
+  /** Sample standard deviation (n − 1 denominator). */
+  sampleStdDev: number;
+  min: number;
+  max: number;
+  /** Total latency in ms across all samples. */
+  total: number;
+  /** Number of distinct runs contributing to this group. */
+  distinctRuns: number;
+  /** Earliest and latest timestamps in the group. */
+  firstTimestamp: number;
+  lastTimestamp: number;
+}
+
+export interface RunSummary {
+  runId: string;
+  model: string;
+  fixture: string;
+  count: number;
+  mean: number;
+  median: number;
+  sampleStdDev: number;
+  min: number;
+  max: number;
+  total: number;
+  firstTimestamp: number;
+  lastTimestamp: number;
+  /** HTTP status code histogram for this run. */
+  statusCodes: Record<string, number>;
+  /** HTTP method histogram for this run. */
+  methods: Record<string, number>;
+}
+
+export interface SummaryResponse {
+  generatedAt: string;
+  totalRecords: number;
+  totalRuns: number;
+  groups: GroupStats[];
+  runs: RunSummary[];
+}
+
+// ─── Bounded-memory configuration ───────────────────────────────────────────
+
+export interface StoreConfig {
+  /** Maximum number of raw records to retain in the ring buffer. */
+  maxRecords: number;
+  /** Maximum number of distinct (model, fixture) groups. */
+  maxGroups: number;
+  /** Maximum number of distinct run IDs. */
+  maxRuns: number;
+}
+
+export const DEFAULT_STORE_CONFIG: StoreConfig = {
+  maxRecords: 10_000,
+  maxGroups: 500,
+  maxRuns: 1_000,
+};
+
+// ─── HTTP response envelopes ────────────────────────────────────────────────
+
+export interface HealthResponse {
+  status: 'ok' | 'degraded';
+  uptimeSeconds: number;
+  recordsInBuffer: number;
+  bufferCapacity: number;
+  bufferUtilization: number;
+  groupsTracked: number;
+  runsTracked: number;
+  version: string;
+}
+
+export interface ErrorResponse {
+  error: string;
+  code: string;
+  details?: string[];
+}
+```
+
+---
+
+## `src/parser.ts`
+
+```typescript
+/**
+ * Incremental, hand-rolled validator for newline-delimited JSON metric records.
+ * No third-party schema libraries.
+ */
+
+import {
+  HTTP_METHODS,
+  type HttpMethod,
+  type MetricRecord,
+  type ParseResult,
+  type RawMetricRecord,
+  type ValidationError,
+  type ValidationErrorCode,
+} from './types.js';
+
+// ─── Field-level validators ─────────────────────────────────────────────────
+
+function isNonEmptyString(value: unknown): value is string {
+  return typeof value === 'string' && value.length > 0;
+}
+
+function isFiniteNumber(value: unknown): value is number {
+  return typeof value === 'number' && Number.isFinite(value);
+}
+
+function isInteger(value: unknown): value is number {
+  return typeof value === 'number' && Number.isInteger(value);
+}
+
+function isValidHttpMethod(value: unknown): value is HttpMethod {
+  return typeof value === 'string' && (HTTP_METHODS as readonly string[]).includes(value);
+}
+
+function isValidStatusCode(value: unknown): value is number {
+  return isInteger(value) && value >= 100 && value <= 599;
+}
+
+function isValidTimestamp(value: unknown): value is string {
+  if (!isNonEmptyString(value)) return false;
+  const parsed = Date.parse(value);
+  return !Number.isNaN(parsed);
+}
+
+function isValidPath(value: unknown): value is string {
+  if (!isNonEmptyString(value)) return false;
+  return value.startsWith('/');
+}
+
+// ─── Required-field spec ────────────────────────────────────────────────────
+
+interface FieldSpec {
+  field: keyof RawMetricRecord;
+  validator: (value: unknown) => boolean;
+  typeLabel: string;
+  valueCheck?: (value: unknown) => string | null; // returns error message or null
+}
+
+const FIELD_SPECS: FieldSpec[] = [
+  {
+    field: 'runId',
+    validator: isNonEmptyString,
+    typeLabel: 'non-empty string',
+  },
+  {
+    field: 'model',
+    validator: isNonEmptyString,
+    typeLabel: 'non-empty string',
+  },
+  {
+    field: 'fixture',
+    validator: isNonEmptyString,
+    typeLabel: 'non-empty string',
+  },
+  {
+    field: 'timestamp',
+    validator: isValidTimestamp,
+    typeLabel: 'ISO-8601 timestamp string',
+    valueCheck: (v) => {
+      if (typeof v !== 'string') return null;
+      const t = Date.parse(v);
+      if (Number.isNaN(t)) return `unparseable timestamp "${v}"`;
+      if (t < 0) return `timestamp is in the past (epoch ms ${t})`;
+      return null;
+    },
+  },
+  {
+    field: 'latencyMs',
+    validator: isFiniteNumber,
+    typeLabel: 'finite number',
+    valueCheck: (v) => {
+      if (typeof v !== 'number') return null;
+      if (v < 0) return `latencyMs must be ≥ 0, got ${v}`;
+      if (v > 3_600_000) return `latencyMs exceeds 1-hour cap (${v} ms)`;
+      return null;
+    },
+  },
+  {
+    field: 'statusCode',
+    validator: isValidStatusCode,
+    typeLabel: 'integer 100–599',
+  },
+  {
+    field: 'method',
+    validator: isValidHttpMethod,
+    typeLabel: `one of ${HTTP_METHODS.join(', ')}`,
+  },
+  {
+    field: 'path',
+    validator: isValidPath,
+    typeLabel: "non-empty string starting with '/'",
+  },
+];
+
+// ─── Core validation ────────────────────────────────────────────────────────
+
+/**
+ * Validate a single raw record. Returns a `ParseResult` with either a
+ * fully-typed `MetricRecord` or a list of `ValidationError`s.
+ */
+export function validateRecord(raw: RawMetricRecord): ParseResult {
+  const errors: ValidationError[] = [];
+
+  // 1. Must be a plain object (not null, not array, not primitive).
+  if (raw === null || typeof raw !== 'object' || Array.isArray(raw)) {
+    return {
+      ok: false,
+      errors: [{ code: 'NOT_OBJECT', field: '$', message: 'Record must be a JSON object' }],
+    };
+  }
+
+  // 2. Check for unknown fields (strict mode).
+  const knownFields = new Set<string>(FIELD_SPECS.map((s) => s.field as string));
+  for (const key of Object.keys(raw)) {
+    if (!knownFields.has(key)) {
+      errors.push({
+        code: 'UNKNOWN_FIELD',
+        field: key,
+        message: `Unknown field "${key}" is not permitted`,
+      });
+    }
+  }
+
+  // 3. Validate each required field.
+  for (const spec of FIELD_SPECS) {
+    const value = raw[spec.field];
+
+    if (value === undefined) {
+      errors.push({
+        code: 'MISSING_FIELD',
+        field: spec.field,
+        message: `Required field "${spec.field}" is missing`,
+      });
+      continue;
+    }
+
+    if (!spec.validator(value)) {
+      errors.push({
+        code: 'WRONG_TYPE',
+        field: spec.field,
+        message: `Field "${spec.field}" must be ${spec.typeLabel}, got ${typeof value}`,
+      });
+      continue;
+    }
+
+    if (spec.valueCheck) {
+      const msg = spec.valueCheck(value);
+      if (msg !== null) {
+        errors.push({
+          code: 'INVALID_VALUE',
+          field: spec.field,
+          message: msg,
+        });
+      }
+    }
+  }
+
+  if (errors.length > 0) {
+    return { ok: false, errors };
+  }
+
+  // 4. All checks passed – build the typed record.
+  const record: MetricRecord = {
+    runId: raw.runId as string,
+    model: raw.model as string,
+    fixture: raw.fixture as string,
+    timestamp: Date.parse(raw.timestamp as string),
+    latencyMs: raw.latencyMs as number,
+    statusCode: raw.statusCode as number,
+    method: raw.method as HttpMethod,
+    path: raw.path as string,
+  };
+
+  return { ok: true, record, errors: [] };
+}
+
+// ─── Incremental line parser ────────────────────────────────────────────────
+
+/**
+ * A stateful parser that consumes raw bytes/text incrementally.
+ * It buffers partial lines across `feed()` calls and emits complete
+ * lines one at a time, so callers can process records as they arrive
+ * without holding the entire payload in memory.
+ */
+export class IncrementalLineParser {
+  private buffer: string = '';
+
+  /**
+   * Feed a chunk of text. Returns an array of complete lines that were
+   * fully assembled from this chunk (plus any carry-over from the previous
+   * chunk). The internal buffer retains any trailing partial line.
+   */
+  feed(chunk: string): string[] {
+    this.buffer += chunk;
+    const lines: string[] = [];
+    let newlineIdx: number;
+
+    while ((newlineIdx = this.buffer.indexOf('\n')) !== -1) {
+      const line = this.buffer.slice(0, newlineIdx);
+      this.buffer = this.buffer.slice(newlineIdx + 1);
+      // Strip trailing \r for CRLF tolerance.
+      if (line.endsWith('\r')) {
+        lines.push(line.slice(0, -1));
+      } else {
+        lines.push(line);
+      }
+    }
+
+    return lines;
+  }
+
+  /**
+   * Flush any remaining partial line (e.g. at end-of-stream).
+   * Returns the final line if the buffer is non-empty, otherwise null.
+   */
+  flush(): string | null {
+    if (this.buffer.length === 0) return null;
+    const line = this.buffer;
+    this.buffer = '';
+    if (line.endsWith('\r')) return line.slice(0, -1);
+    return line;
+  }
+
+  /** Reset the parser state. */
+  reset(): void {
+    this.buffer = '';
+  }
+
+  /** Current buffered (incomplete) line length. */
+  get pendingLength(): number {
+    return this.buffer.length;
+  }
+}
+
+/**
+ * Parse a single line of JSON text into a `RawMetricRecord`.
+ * Returns `null` if the line is empty or whitespace-only.
+ * Throws a `SyntaxError` if the JSON is malformed.
+ */
+export function parseLine(line: string): RawMetricRecord | null {
+  const trimmed = line.trim();
+  if (trimmed.length === 0) return null;
+
+  let parsed: unknown;
+  try {
+    parsed = JSON.parse(trimmed);
+  } catch (err) {
+    const msg = err instanceof Error ? err.message : String(err);
+    throw new SyntaxError(`Malformed JSON on line: ${msg}`);
+  }
+
+  if (parsed === null || typeof parsed !== 'object' || Array.isArray(parsed)) {
+    throw new SyntaxError('Record must be a JSON object, got ' + (parsed === null ? 'null' : typeof parsed));
+  }
+
+  return parsed as RawMetricRecord;
+}
+
+/**
+ * Convenience: parse and validate a single line in one call.
+ * Returns `{ ok: true, record }` on success, or `{ ok: false, errors }` on failure.
+ * A `

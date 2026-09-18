@@ -1,0 +1,60 @@
+2. In contrast, a multi-stream decode step is compute bound because the batch size increases arithmetic intensity, allowing the GPU to perform more operations per byte of memory access.
+3. The roofline model illustrates this transition by plotting achievable performance against arithmetic intensity, showing the intersection point where the bottleneck shifts from memory bandwidth to floating-point throughput.
+4. Memory hierarchy optimization involves placing frequently accessed weights in high-bandwidth memory (HBM) while keeping less critical metadata in faster on-chip SRAM to reduce latency spikes.
+5. Quantization reduces the bit-width of model parameters from 32-bit floating point to 8-bit or 4-bit integers, significantly decreasing the memory footprint and bandwidth requirements for weight loading.
+6. Activation quantization applies similar bit-reduction techniques to intermediate tensor values during inference, further lowering memory traffic but requiring careful calibration to prevent accuracy degradation.
+7. Sparsity exploitation leverages the fact that many weights in large neural networks are near zero, allowing hardware to skip computations for these elements and save both energy and time.
+8. Structured sparsity ensures that zeros are distributed in patterns compatible with standard hardware instructions, such as 2:4 sparsity, which allows two out of every four elements to be zero without breaking vectorization.
+9. Kernel fusion combines multiple small operations into a single kernel launch, reducing the overhead associated with memory reads and writes between separate function calls.
+10. Tensor parallelism splits the matrix multiplication operations across multiple GPUs, where each device computes a portion of the output matrix, requiring all-reduce communication to combine results.
+11. Pipeline parallelism divides the model into stages assigned to different devices, with micro-batches flowing through the pipeline to keep all devices busy and hide communication latency.
+12. Expert parallelism distributes the layers of a Mixture-of-Experts model across different devices, routing tokens to specific experts based on gating scores to maximize resource utilization.
+13. Data parallelism replicates the entire model on every device, where each processes a different subset of the input data, requiring gradient synchronization after each forward pass during training.
+14. ZeRO optimization shards optimizer states, gradients, and model parameters across data-parallel workers, reducing the memory footprint per device without sacrificing the benefits of data parallelism.
+15. Gradient accumulation simulates a larger batch size by performing multiple forward and backward passes before updating weights, useful when hardware memory limits prevent processing the full batch at once.
+16. Mixed-precision training uses lower precision formats like FP16 or BF16 for forward and backward passes while maintaining FP32 master weights for updates, balancing speed and numerical stability.
+17. Automatic mixed precision dynamically scales loss values to prevent underflow in low-precision arithmetic, ensuring that gradients remain within the representable range of the hardware.
+18. Checkpointing saves the state of the training process to persistent storage at regular intervals, enabling recovery from hardware failures or preemption events without restarting from scratch.
+19. Fault tolerance mechanisms include heartbeats and watchdog timers that detect stalled processes, triggering automatic restarts or failover to backup nodes to maintain cluster uptime.
+20. Elastic scaling allows the training job to add or remove worker nodes dynamically based on resource availability, optimizing cost and completion time in cloud environments.
+21. Spot instance utilization leverages discounted, preemptible cloud resources for training, combined with aggressive checkpointing to minimize the impact of preemptions on overall progress.
+22. Network topology awareness guides the placement of communication-heavy tasks closer to high-bandwidth interconnects, such as NVLink domains, to minimize cross-switch latency.
+23. RDMA (Remote Direct Memory Access) enables direct transfer of data between network interfaces and memory buffers, bypassing the CPU and operating system to achieve microsecond-level latency.
+24. InfiniBand fabrics provide high-throughput, low-latency communication for tightly coupled clusters, supporting features like adaptive routing and congestion control essential for collective operations.
+25. Ethernet-based high-performance computing increasingly adopts RoCE (RDMA over Converged Ethernet) to leverage existing infrastructure while achieving performance comparable to proprietary fabrics.
+26. Collective communication primitives, such as AllReduce, Broadcast, and AllGather, are fundamental building blocks for distributed training, requiring efficient implementation to scale beyond hundreds of nodes.
+27. Ring AllReduce algorithm divides data into chunks that circulate around a logical ring of nodes, combining and exchanging partial results in a pipelined fashion to maximize bandwidth utilization.
+28. Tree AllReduce builds a binary tree structure for data aggregation, offering logarithmic latency compared to linear ring algorithms, which is beneficial for smaller messages or higher-latency networks.
+29. Hierarchical AllReduce combines intra-node and inter-node communication strategies, first aggregating data within fast local domains and then exchanging results across slower global links.
+30. Overlap of computation and communication hides the latency of data transfer by executing independent compute kernels while collective operations are in progress on separate streams.
+31. Stream synchronization ensures correct ordering of dependent operations, using events to signal completion of asynchronous tasks before subsequent kernels begin execution.
+32. CUDA Graphs capture a sequence of kernel launches and memory copies into a static graph, reducing CPU-side launch overhead and allowing for optimized scheduling on the GPU.
+33. Dynamic batching groups incoming requests based on token length and arrival time, creating variable-size batches that maximize hardware occupancy while respecting latency constraints.
+34. Continuous batching, or iteration-level batching, inserts new requests into the active batch as soon as their previous tokens finish decoding, eliminating idle cycles between fixed batch boundaries.
+35. Paged attention manages key-value cache memory in non-contiguous blocks, similar to virtual memory paging, preventing fragmentation and allowing for flexible allocation of long sequences.
+36. KV cache compression employs quantization or eviction strategies to reduce the memory footprint of stored attention states, enabling longer context windows on limited hardware resources.
+37. Sliding window attention limits the range of previous tokens that each query can attend to, reducing the quadratic complexity of standard attention mechanisms for long-range dependencies.
+38. FlashAttention algorithm reorganizes the computation of attention to fit within fast on-chip memory, avoiding the need to materialize the large intermediate attention matrix in global memory.
+39. Multi-head attention splits the embedding dimension into multiple heads, allowing the model to attend to different representation subspaces simultaneously, enhancing expressive power.
+40. Grouped Query Attention (GQA) reduces the number of key-value heads relative to query heads, sharing KV caches among multiple query heads to lower memory usage without significant accuracy loss.
+41. Rotary position embeddings encode positional information into the query and key vectors using rotation matrices, providing relative position awareness that generalizes well to longer sequences.
+42. Normalization layers, such as LayerNorm or RMSNorm, stabilize training dynamics by normalizing feature distributions, which is crucial for deep networks with varying initialization scales.
+43. Dropout regularization randomly deactivates a fraction of neurons during training, preventing co-adaptation and improving generalization performance on unseen data.
+44. Weight decay acts as an L2 regularization term, penalizing large parameter values to encourage simpler models and mitigate overfitting on small datasets.
+45. Learning rate schedulers adjust the magnitude of weight updates over time, typically starting high to escape local minima and decaying low to converge precisely to optimal solutions.
+46. Warmup phase gradually increases the learning rate from zero to its peak value at the start of training, preventing early instability in large-scale model optimization.
+47. Cosine annealing follows a smooth curve that decreases the learning rate to a minimum and potentially increases it again, often paired with warm restarts to escape sharp minima.
+48. Stochastic Gradient Descent (SGD) updates weights using the gradient computed from a single sample or small batch, providing noisy but unbiased estimates of the true gradient.
+49. Adam optimizer combines momentum and adaptive learning rates, maintaining running averages of gradients and squared gradients to normalize update steps for each parameter.
+50. Adafactor optimizer reduces memory usage by estimating variance only along one dimension of the weight matrix, assuming factorization of the second moment accumulator.
+51. LAMB optimizer scales updates based on the norm of the weight matrix, ensuring consistent step sizes across parameters with vastly different magnitudes in large models.
+52. Gradient clipping prevents exploding gradients by capping the norm of the total gradient vector, protecting the optimizer from taking destructive steps in unstable regions.
+53. Initialization schemes, such as Xavier or He initialization, set initial weight values based on layer dimensions to maintain appropriate signal variance throughout the network depth.
+54. Embedding tables map discrete tokens to dense vector representations, serving as the interface between symbolic inputs and continuous space computations in neural networks.
+55. Tokenizers break raw text into subword units, balancing vocabulary size and sequence length, which directly impacts the computational cost and efficiency of language model processing.
+56. Byte-pair encoding (BPE) constructs a tokenizer vocabulary iteratively by merging most frequent character pairs, creating subwords that balance frequency and coverage.
+57. SentencePiece extends BPE by treating whitespace as a special character, allowing tokenization that is robust to variations in spacing and capitalization across languages.
+58. Unigram language models assign probabilities to subwords based on their frequency in a corpus, used for pruning the BPE vocabulary to a manageable size.
+59. Vocabulary expansion techniques, such as adding rare words or domain-specific terms, can improve model performance on specialized tasks at the cost of increased embedding table size.
+60. Positional encodings provide absolute or relative position information to transformer inputs, compensating for the permutation invariance of self-attention operations.
+61. Feed-forward networks within transformer blocks apply non-linear transformations

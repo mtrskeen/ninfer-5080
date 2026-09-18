@@ -1,0 +1,525 @@
+```python
+# gpu_job_runner/__init__.py
+"""gpu_job_runner - Deterministic asynchronous job runner for GPU workloads."""
+
+__version__ = "1.0.0"
+
+from .runner import JobRunner, RunnerConfig
+from .manifest import Manifest, JobSpec, load_manifest
+from .state import StateManager, JobState
+from .events import EventStream, EventType
+from .secrets import SecretRedactor
+
+__all__ = [
+    "JobRunner",
+    "RunnerConfig",
+    "Manifest",
+    "JobSpec",
+    "load_manifest",
+    "StateManager",
+    "JobState",
+    "EventStream",
+    "EventType",
+    "SecretRedactor",
+]
+```
+
+```python
+# gpu_job_runner/manifest.py
+"""JSON manifest parsing and validation."""
+
+from __future__ import annotations
+
+import json
+from dataclasses import dataclass, field
+from enum import Enum
+from pathlib import Path
+from typing import Any
+
+
+class JobKind(str, Enum):
+    """Types of jobs that can be scheduled."""
+
+    TRAINING = "training"
+    INFERENCE = "inference"
+    EVALUATION = "evaluation"
+    CUSTOM = "custom"
+
+
+@dataclass
+class JobSpec:
+    """Specification for a single job entry in the manifest."""
+
+    job_id: str
+    kind: JobKind
+    command: list[str]
+    gpu_count: int = 1
+    priority: int = 0
+    timeout_seconds: float | None = None
+    env: dict[str, str] = field(default_factory=dict)
+    working_dir: str | None = None
+    description: str = ""
+    depends_on: list[str] = field(default_factory=list)
+
+    def to_dict(self) -> dict[str, Any]:
+        return {
+            "job_id": self.job_id,
+            "kind": self.kind.value,
+            "command": self.command,
+            "gpu_count": self.gpu_count,
+            "priority": self.priority,
+            "timeout_seconds": self.timeout_seconds,
+            "env": self.env,
+            "working_dir": self.working_dir,
+            "description": self.description,
+            "depends_on": self.depends_on,
+        }
+
+    @classmethod
+    def from_dict(cls, data: dict[str, Any]) -> JobSpec:
+        job_id = data["job_id"]
+        kind_str = data.get("kind", "custom")
+        try:
+            kind = JobKind(kind_str)
+        except ValueError:
+            kind = JobKind.CUSTOM
+
+        return cls(
+            job_id=job_id,
+            kind=kind,
+            command=data.get("command", []),
+            gpu_count=int(data.get("gpu_count", 1)),
+            priority=int(data.get("priority", 0)),
+            timeout_seconds=float(data["timeout_seconds"]) if "timeout_seconds" in data else None,
+            env={k: str(v) for k, v in data.get("env", {}).items()},
+            working_dir=data.get("working_dir"),
+            description=data.get("description", ""),
+            depends_on=[str(d) for d in data.get("depends_on", [])],
+        )
+
+
+@dataclass
+class Manifest:
+    """Parsed JSON manifest containing job specifications and global config."""
+
+    version: str
+    jobs: list[JobSpec]
+    secrets: dict[str, str] = field(default_factory=dict)
+    max_concurrent_gpu_jobs: int = 1
+    state_file: str = "state.json"
+    events_file: str = "events.jsonl"
+    redact_patterns: list[str] = field(default_factory=list)
+
+    def get_job(self, job_id: str) -> JobSpec | None:
+        for job in self.jobs:
+            if job.job_id == job_id:
+                return job
+        return None
+
+    def to_dict(self) -> dict[str, Any]:
+        return {
+            "version": self.version,
+            "jobs": [j.to_dict() for j in self.jobs],
+            "secrets": self.secrets,
+            "max_concurrent_gpu_jobs": self.max_concurrent_gpu_jobs,
+            "state_file": self.state_file,
+            "events_file": self.events_file,
+            "redact_patterns": self.redact_patterns,
+        }
+
+    @classmethod
+    def from_dict(cls, data: dict[str, Any]) -> Manifest:
+        jobs = [JobSpec.from_dict(j) for j in data.get("jobs", [])]
+        return cls(
+            version=data.get("version", "1.0"),
+            jobs=jobs,
+            secrets={k: str(v) for k, v in data.get("secrets", {}).items()},
+            max_concurrent_gpu_jobs=int(data.get("max_concurrent_gpu_jobs", 1)),
+            state_file=data.get("state_file", "state.json"),
+            events_file=data.get("events_file", "events.jsonl"),
+            redact_patterns=[str(p) for p in data.get("redact_patterns", [])],
+        )
+
+
+def load_manifest(path: str | Path) -> Manifest:
+    """Load and parse a JSON manifest file.
+
+    Args:
+        path: Path to the JSON manifest file.
+
+    Returns:
+        Parsed Manifest instance.
+
+    Raises:
+        FileNotFoundError: If the manifest file does not exist.
+        json.JSONDecodeError: If the file is not valid JSON.
+        ValueError: If the manifest structure is invalid.
+    """
+    path = Path(path)
+    if not path.exists():
+        raise FileNotFoundError(f"Manifest file not found: {path}")
+
+    with open(path, "r", encoding="utf-8") as f:
+        raw = json.load(f)
+
+    if not isinstance(raw, dict):
+        raise ValueError("Manifest root must be a JSON object")
+
+    if "jobs" not in raw:
+        raise ValueError("Manifest must contain a 'jobs' array")
+
+    if not isinstance(raw["jobs"], list):
+        raise ValueError("'jobs' must be an array")
+
+    # Validate each job has required fields
+    seen_ids: set[str] = set()
+    for i, job_data in enumerate(raw["jobs"]):
+        if not isinstance(job_data, dict):
+            raise ValueError(f"Job at index {i} must be an object")
+        if "job_id" not in job_data:
+            raise ValueError(f"Job at index {i} missing required field 'job_id'")
+        if "command" not in job_data:
+            raise ValueError(f"Job '{job_data['job_id']}' missing required field 'command'")
+        if not isinstance(job_data["command"], list):
+            raise ValueError(f"Job '{job_data['job_id']}' command must be an array")
+        if len(job_data["command"]) == 0:
+            raise ValueError(f"Job '{job_data['job_id']}' command must not be empty")
+
+        jid = job_data["job_id"]
+        if jid in seen_ids:
+            raise ValueError(f"Duplicate job_id: {jid}")
+        seen_ids.add(jid)
+
+    # Validate dependencies reference existing jobs
+    all_ids = {j["job_id"] for j in raw["jobs"]}
+    for job_data in raw["jobs"]:
+        for dep in job_data.get("depends_on", []):
+            if dep not in all_ids:
+                raise ValueError(
+                    f"Job '{job_data['job_id']}' depends on unknown job '{dep}'"
+                )
+
+    return Manifest.from_dict(raw)
+```
+
+```python
+# gpu_job_runner/state.py
+"""Atomic persistent state management for job tracking."""
+
+from __future__ import annotations
+
+import json
+import os
+import tempfile
+import time
+from dataclasses import dataclass, field
+from enum import Enum
+from pathlib import Path
+from typing import Any
+
+
+class JobState(str, Enum):
+    """Lifecycle states for a job."""
+
+    PENDING = "pending"
+    RUNNING = "running"
+    COMPLETED = "completed"
+    FAILED = "failed"
+    CANCELLED = "cancelled"
+
+    @property
+    def is_terminal(self) -> bool:
+        return self in (JobState.COMPLETED, JobState.FAILED, JobState.CANCELLED)
+
+
+@dataclass
+class JobRecord:
+    """Persistent record for a single job's execution state."""
+
+    job_id: str
+    state: JobState = JobState.PENDING
+    started_at: float | None = None
+    finished_at: float | None = None
+    exit_code: int | None = None
+    error_message: str | None = None
+    attempts: int = 0
+    last_error: str | None = None
+
+    def to_dict(self) -> dict[str, Any]:
+        return {
+            "job_id": self.job_id,
+            "state": self.state.value,
+            "started_at": self.started_at,
+            "finished_at": self.finished_at,
+            "exit_code": self.exit_code,
+            "error_message": self.error_message,
+            "attempts": self.attempts,
+            "last_error": self.last_error,
+        }
+
+    @classmethod
+    def from_dict(cls, data: dict[str, Any]) -> JobRecord:
+        return cls(
+            job_id=data["job_id"],
+            state=JobState(data.get("state", "pending")),
+            started_at=data.get("started_at"),
+            finished_at=data.get("finished_at"),
+            exit_code=data.get("exit_code"),
+            error_message=data.get("error_message"),
+            attempts=int(data.get("attempts", 0)),
+            last_error=data.get("last_error"),
+        )
+
+
+class StateManager:
+    """Manages atomic persistence of job execution state.
+
+    Uses write-to-tempfile + rename pattern for atomicity.
+    """
+
+    def __init__(self, state_file: str | Path) -> None:
+        self._state_file = Path(state_file)
+        self._records: dict[str, JobRecord] = {}
+        self._load()
+
+    def _load(self) -> None:
+        """Load existing state from disk, if any."""
+        if not self._state_file.exists():
+            return
+        try:
+            with open(self._state_file, "r", encoding="utf-8") as f:
+                data = json.load(f)
+            for rec_data in data.get("jobs", []):
+                rec = JobRecord.from_dict(rec_data)
+                self._records[rec.job_id] = rec
+        except (json.JSONDecodeError, KeyError, TypeError):
+            # Corrupted or malformed state; start fresh
+            self._records = {}
+
+    def save(self) -> None:
+        """Atomically persist current state to disk."""
+        payload = {
+            "version": "1.0",
+            "saved_at": time.time(),
+            "jobs": [rec.to_dict() for rec in self._records.values()],
+        }
+
+        # Ensure parent directory exists
+        self._state_file.parent.mkdir(parents=True, exist_ok=True)
+
+        # Atomic write: temp file in same directory, then rename
+        fd, tmp_path = tempfile.mkstemp(
+            dir=str(self._state_file.parent),
+            prefix=f".{self._state_file.name}.",
+            suffix=".tmp",
+        )
+        try:
+            with os.fdopen(fd, "w", encoding="utf-8") as f:
+                json.dump(payload, f, indent=2)
+                f.flush()
+                os.fsync(f.fileno())
+            os.replace(tmp_path, str(self._state_file))
+        except BaseException:
+            # Clean up temp file on failure
+            try:
+                os.unlink(tmp_path)
+            except OSError:
+                pass
+            raise
+
+    def get_record(self, job_id: str) -> JobRecord | None:
+        return self._records.get(job_id)
+
+    def set_pending(self, job_id: str) -> JobRecord:
+        if job_id not in self._records:
+            self._records[job_id] = JobRecord(job_id=job_id, state=JobState.PENDING)
+        else:
+            self._records[job_id].state = JobState.PENDING
+        return self._records[job_id]
+
+    def set_running(self, job_id: str) -> JobRecord:
+        rec = self._get_or_create(job_id)
+        rec.state = JobState.RUNNING
+        rec.started_at = time.time()
+        rec.attempts += 1
+        return rec
+
+    def set_completed(self, job_id: str, exit_code: int = 0) -> JobRecord:
+        rec = self._get_or_create(job_id)
+        rec.state = JobState.COMPLETED
+        rec.finished_at = time.time()
+        rec.exit_code = exit_code
+        return rec
+
+    def set_failed(self, job_id: str, exit_code: int | None = None, error: str | None = None) -> JobRecord:
+        rec = self._get_or_create(job_id)
+        rec.state = JobState.FAILED
+        rec.finished_at = time.time()
+        rec.exit_code = exit_code
+        rec.error_message = error
+        rec.last_error = error
+        return rec
+
+    def set_cancelled(self, job_id: str, reason: str | None = None) -> JobRecord:
+        rec = self._get_or_create(job_id)
+        rec.state = JobState.CANCELLED
+        rec.finished_at = time.time()
+        rec.error_message = reason
+        return rec
+
+    def is_completed(self, job_id: str) -> bool:
+        rec = self._records.get(job_id)
+        return rec is not None and rec.state == JobState.COMPLETED
+
+    def is_terminal(self, job_id: str) -> bool:
+        rec = self._records.get(job_id)
+        return rec is not None and rec.state.is_terminal
+
+    def pending_jobs(self) -> list[str]:
+        return [
+            jid for jid, rec in self._records.items()
+            if rec.state == JobState.PENDING
+        ]
+
+    def running_jobs(self) -> list[str]:
+        return [
+            jid for jid, rec in self._records.items()
+            if rec.state == JobState.RUNNING
+        ]
+
+    def completed_jobs(self) -> list[str]:
+        return [
+            jid for jid, rec in self._records.items()
+            if rec.state == JobState.COMPLETED
+        ]
+
+    def failed_jobs(self) -> list[str]:
+        return [
+            jid for jid, rec in self._records.items()
+            if rec.state == JobState.FAILED
+        ]
+
+    def cancelled_jobs(self) -> list[str]:
+        return [
+            jid for jid, rec in self._records.items()
+            if rec.state == JobState.CANCELLED
+        ]
+
+    def _get_or_create(self, job_id: str) -> JobRecord:
+        if job_id not in self._records:
+            self._records[job_id] = JobRecord(job_id=job_id)
+        return self._records[job_id]
+```
+
+```python
+# gpu_job_runner/events.py
+"""Structured JSONL event streaming."""
+
+from __future__ import annotations
+
+import json
+import time
+from dataclasses import dataclass, field
+from enum import Enum
+from pathlib import Path
+from typing import Any, TextIO
+
+
+class EventType(str, Enum):
+    """Types of events emitted by the runner."""
+
+    RUNNER_START = "runner_start"
+    RUNNER_STOP = "runner_stop"
+    JOB_QUEUED = "job_queued"
+    JOB_STARTED = "job_started"
+    JOB_COMPLETED = "job_completed"
+    JOB_FAILED = "job_failed"
+    JOB_CANCELLED = "job_cancelled"
+    JOB_OUTPUT = "job_output"
+    SIGINT_RECEIVED = "sigint_received"
+    SHUTDOWN_INITIATED = "shutdown_initiated"
+    ERROR = "error"
+    INFO = "info"
+
+
+@dataclass
+class Event:
+    """A single structured event."""
+
+    event_type: EventType
+    timestamp: float
+    job_id: str | None = None
+    message: str = ""
+    data: dict[str, Any] = field(default_factory=dict)
+
+    def to_dict(self) -> dict[str, Any]:
+        d: dict[str, Any] = {
+            "event": self.event_type.value,
+            "ts": self.timestamp,
+        }
+        if self.job_id is not None:
+            d["job_id"] = self.job_id
+        if self.message:
+            d["message"] = self.message
+        if self.data:
+            d["data"] = self.data
+        return d
+
+    def to_jsonl(self) -> str:
+        return json.dumps(self.to_dict(), separators=(",", ":"), ensure_ascii=False)
+
+
+class EventStream:
+    """Streams structured events to a JSONL file.
+
+    Events are flushed immediately after writing to ensure durability.
+    """
+
+    def __init__(
+        self,
+        output_path: str | Path,
+        redactor: "SecretRedactor | None" = None,
+    ) -> None:
+        self._output_path = Path(output_path)
+        self._redactor = redactor
+        self._file: TextIO | None = None
+        self._ensure_parent()
+        self._open()
+
+    def _ensure_parent(self) -> None:
+        self._output_path.parent.mkdir(parents=True, exist_ok=True)
+
+    def _open(self) -> None:
+        self._file = open(self._output_path, "a", encoding="utf-8")
+
+    def emit(
+        self,
+        event_type: EventType,
+        job_id: str | None = None,
+        message: str = "",
+        **data: Any,
+    ) -> Event:
+        """Emit an event to the stream.
+
+        Args:
+            event_type: Type of event.
+            job_id: Associated job ID, if any.
+            message: Human-readable message (will be redacted).
+            **data: Additional structured data (values will be redacted).
+
+        Returns:
+            The created Event instance.
+        """
+        ts = time.time()
+
+        # Redact secrets from message and data values
+        if self._redactor:
+            message = self._redactor.redact(message)
+            data = self._redactor.redact_dict(data)
+
+        event = Event(
+            event_type=event_type,
+            timestamp=ts,
+            job_id=job_id,
+            message=message,
+            data

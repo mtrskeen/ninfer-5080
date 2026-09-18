@@ -1,0 +1,515 @@
+# Request Metrics Service
+
+Below is a complete, self-contained TypeScript 5 service. It uses only `node:http` and `node:fs` (no third‑party schema or HTTP libraries), parses NDJSON incrementally with a bounded buffer, validates with a hand‑rolled validator, aggregates per `(model, fixture)`, and exposes `/health`, `/summary`, and `/runs/:id`.
+
+```
+metrics-service/
+├── package.json
+├── tsconfig.json
+├── tsconfig.test.json
+├── README.md
+└── src/
+    ├── types.ts
+    ├── validator.ts
+    ├── parser.ts
+    ├── aggregator.ts
+    ├── server.ts
+    ├── index.ts
+    └── __tests__/
+        ├── validator.test.ts
+        ├── parser.test.ts
+        ├── aggregator.test.ts
+        └── server.test.ts
+```
+
+---
+
+## `package.json`
+
+```json
+{
+  "name": "request-metrics-service",
+  "version": "1.0.0",
+  "description": "NDJSON request-metrics ingestion, validation, and aggregation service",
+  "type": "module",
+  "main": "dist/index.js",
+  "scripts": {
+    "build": "tsc -p tsconfig.json",
+    "start": "node dist/index.js",
+    "dev": "tsx src/index.ts",
+    "test": "vitest run",
+    "test:watch": "vitest",
+    "typecheck": "tsc -p tsconfig.json --noEmit"
+  },
+  "engines": {
+    "node": ">=18.0.0"
+  },
+  "devDependencies": {
+    "@types/node": "^20.11.0",
+    "tsx": "^4.7.0",
+    "typescript": "^5.3.3",
+    "vitest": "^1.2.0"
+  }
+}
+```
+
+---
+
+## `tsconfig.json`
+
+```json
+{
+  "compilerOptions": {
+    "target": "ES2022",
+    "module": "Node16",
+    "moduleResolution": "Node16",
+    "lib": ["ES2022"],
+    "outDir": "dist",
+    "rootDir": "src",
+    "strict": true,
+    "noUncheckedIndexedAccess": true,
+    "noImplicitOverride": true,
+    "noFallthroughCasesInSwitch": true,
+    "exactOptionalPropertyTypes": true,
+    "forceConsistentCasingInFileNames": true,
+    "esModuleInterop": true,
+    "skipLibCheck": true,
+    "declaration": true,
+    "sourceMap": true,
+    "resolveJsonModule": true,
+    "isolatedModules": true
+  },
+  "include": ["src/**/*.ts"],
+  "exclude": ["node_modules", "dist", "src/__tests__"]
+}
+```
+
+## `tsconfig.test.json`
+
+```json
+{
+  "extends": "./tsconfig.json",
+  "compilerOptions": {
+    "noEmit": true,
+    "rootDir": "."
+  },
+  "include": ["src/**/*.ts"]
+}
+```
+
+---
+
+## `src/types.ts`
+
+```typescript
+/**
+ * Core domain types for the request-metrics service.
+ * All types are strict and fully specified — no `any`.
+ */
+
+// ─── Inbound record ──────────────────────────────────────────────────────────
+
+/** A single newline-delimited request-metrics record. */
+export interface RequestMetricsRecord {
+  /** Globally unique run identifier (e.g. UUID). */
+  runId: string;
+  /** Model identifier (e.g. "gpt-4", "llama-3-70b"). */
+  model: string;
+  /** Fixture / test-case identifier (e.g. "summarization-long"). */
+  fixture: string;
+  /** Wall-clock timestamp in ISO-8601 (UTC). */
+  timestamp: string;
+  /** End-to-end latency in milliseconds. Must be finite and ≥ 0. */
+  latencyMs: number;
+  /** HTTP status code returned to the caller. */
+  statusCode: number;
+  /** Total tokens (prompt + completion). Must be a non-negative integer. */
+  tokenCount: number;
+  /** Prompt tokens. Must be a non-negative integer. */
+  promptTokens: number;
+  /** Completion tokens. Must be a non-negative integer. */
+  completionTokens: number;
+  /** Optional free-form error message when the request failed. */
+  errorMessage?: string;
+}
+
+// ─── Validation ──────────────────────────────────────────────────────────────
+
+export type ValidationSeverity = "error" | "warning";
+
+export interface ValidationError {
+  field: string;
+  message: string;
+  severity: ValidationSeverity;
+}
+
+export type ValidationResult =
+  | { ok: true; value: RequestMetricsRecord }
+  | { ok: false; errors: readonly ValidationError[] };
+
+// ─── Aggregation ─────────────────────────────────────────────────────────────
+
+export interface GroupKey {
+  model: string;
+  fixture: string;
+}
+
+export interface GroupStats {
+  model: string;
+  fixture: string;
+  count: number;
+  mean: number;
+  median: number;
+  sampleStdDev: number;
+  min: number;
+  max: number;
+  p95: number;
+  p99: number;
+  errorCount: number;
+  totalTokens: number;
+  firstTimestamp: string;
+  lastTimestamp: string;
+}
+
+export interface RunSummary {
+  runId: string;
+  recordCount: number;
+  acceptedCount: number;
+  rejectedCount: number;
+  groups: readonly GroupStats[];
+  overallMean: number;
+  overallMedian: number;
+  overallStdDev: number;
+  errorRate: number;
+  firstTimestamp: string;
+  lastTimestamp: string;
+}
+
+export interface SummaryResponse {
+  runId: string;
+  recordCount: number;
+  acceptedCount: number;
+  rejectedCount: number;
+  groups: readonly GroupStats[];
+  overallMean: number;
+  overallMedian: number;
+  overallStdDev: number;
+  errorRate: number;
+  firstTimestamp: string;
+  lastTimestamp: string;
+}
+
+// ─── Parser / ingestion ──────────────────────────────────────────────────────
+
+export type ParseEvent =
+  | { type: "record"; record: RequestMetricsRecord }
+  | { type: "malformed"; line: string; errors: readonly ValidationError[] }
+  | { type: "empty" };
+
+export interface ParserState {
+  /** Number of complete records successfully parsed. */
+  recordsParsed: number;
+  /** Number of lines that failed validation. */
+  malformedCount: number;
+  /** Number of blank lines skipped. */
+  blankCount: number;
+  /** Total bytes consumed from the stream. */
+  bytesConsumed: number;
+}
+
+// ─── Server / HTTP ───────────────────────────────────────────────────────────
+
+export interface HealthResponse {
+  status: "ok" | "degraded";
+  uptimeSeconds: number;
+  recordsIngested: number;
+  malformedCount: number;
+  activeRuns: number;
+  memoryUsedMB: number;
+  memoryLimitMB: number;
+  version: string;
+}
+
+export interface IngestResponse {
+  accepted: number;
+  rejected: number;
+  total: number;
+  runId: string;
+}
+
+// ─── Configuration ───────────────────────────────────────────────────────────
+
+export interface ServiceConfig {
+  /** Port to listen on. */
+  port: number;
+  /** Maximum bytes the incremental parser will buffer before emitting an error. */
+  maxLineBytes: number;
+  /** Maximum number of runs to keep in memory before evicting the oldest. */
+  maxRuns: number;
+  /** Maximum records per run before the run is sealed (read-only). */
+  maxRecordsPerRun: number;
+  /** Service version string reported in /health. */
+  version: string;
+}
+
+export const DEFAULT_CONFIG: ServiceConfig = {
+  port: 8080,
+  maxLineBytes: 64 * 1024, // 64 KiB
+  maxRuns: 1024,
+  maxRecordsPerRun: 100_000,
+  version: "1.0.0",
+};
+```
+
+---
+
+## `src/validator.ts`
+
+```typescript
+import type {
+  RequestMetricsRecord,
+  ValidationError,
+  ValidationResult,
+} from "./types.js";
+
+/**
+ * Hand-rolled validator for request-metrics NDJSON records.
+ * No third-party schema library is used.
+ */
+
+const ISO_8601_RE =
+  /^\d{4}-\d{2}-\d{2}T\d{2}:\d{2}:\d{2}(\.\d+)?(Z|[+-]\d{2}:\d{2})$/;
+
+const VALID_STATUS_CODES = new Set([
+  100, 101, 102, 103,
+  200, 201, 202, 203, 204, 205, 206, 207, 226,
+  300, 301, 302, 303, 304, 305, 307, 308,
+  400, 401, 402, 403, 404, 405, 406, 407, 408, 409,
+  410, 411, 412, 413, 414, 415, 416, 417, 418,
+  421, 422, 423, 424, 425, 426, 428, 429, 431,
+  451,
+  500, 501, 502, 503, 504, 505, 506, 507, 508, 509,
+  510, 511,
+]);
+
+function isFiniteNumber(v: unknown): v is number {
+  return typeof v === "number" && Number.isFinite(v);
+}
+
+function isNonNegativeInteger(v: unknown): v is number {
+  return typeof v === "number" && Number.isInteger(v) && v >= 0;
+}
+
+function isNonEmptyString(v: unknown): v is string {
+  return typeof v === "string" && v.length > 0;
+}
+
+function isValidTimestamp(v: unknown): v is string {
+  if (typeof v !== "string") return false;
+  if (!ISO_8601_RE.test(v)) return false;
+  const d = new Date(v);
+  return !Number.isNaN(d.getTime());
+}
+
+/**
+ * Validate a raw JSON-parsed object against the RequestMetricsRecord schema.
+ * Returns a discriminated union: either the typed record or a list of errors.
+ */
+export function validateRecord(raw: unknown): ValidationResult {
+  const errors: ValidationError[] = [];
+
+  if (raw === null || typeof raw !== "object" || Array.isArray(raw)) {
+    return {
+      ok: false,
+      errors: [{ field: "$", message: "Record must be a JSON object", severity: "error" }],
+    };
+  }
+
+  const obj = raw as Record<string, unknown>;
+
+  // runId
+  if (!isNonEmptyString(obj["runId"])) {
+    errors.push({
+      field: "runId",
+      message: "runId is required and must be a non-empty string",
+      severity: "error",
+    });
+  }
+
+  // model
+  if (!isNonEmptyString(obj["model"])) {
+    errors.push({
+      field: "model",
+      message: "model is required and must be a non-empty string",
+      severity: "error",
+    });
+  }
+
+  // fixture
+  if (!isNonEmptyString(obj["fixture"])) {
+    errors.push({
+      field: "fixture",
+      message: "fixture is required and must be a non-empty string",
+      severity: "error",
+    });
+  }
+
+  // timestamp
+  if (!isValidTimestamp(obj["timestamp"])) {
+    errors.push({
+      field: "timestamp",
+      message:
+        "timestamp is required and must be a valid ISO-8601 string (e.g. 2024-01-15T12:00:00Z)",
+      severity: "error",
+    });
+  }
+
+  // latencyMs
+  if (!isFiniteNumber(obj["latencyMs"])) {
+    errors.push({
+      field: "latencyMs",
+      message: "latencyMs is required and must be a finite number",
+      severity: "error",
+    });
+  } else if (obj["latencyMs"] < 0) {
+    errors.push({
+      field: "latencyMs",
+      message: "latencyMs must be >= 0",
+      severity: "error",
+    });
+  }
+
+  // statusCode
+  if (!isNonNegativeInteger(obj["statusCode"])) {
+    errors.push({
+      field: "statusCode",
+      message: "statusCode is required and must be a non-negative integer",
+      severity: "error",
+    });
+  } else if (!VALID_STATUS_CODES.has(obj["statusCode"])) {
+    errors.push({
+      field: "statusCode",
+      message: `statusCode ${obj["statusCode"]} is not a valid HTTP status code`,
+      severity: "error",
+    });
+  }
+
+  // tokenCount
+  if (!isNonNegativeInteger(obj["tokenCount"])) {
+    errors.push({
+      field: "tokenCount",
+      message: "tokenCount is required and must be a non-negative integer",
+      severity: "error",
+    });
+  }
+
+  // promptTokens
+  if (!isNonNegativeInteger(obj["promptTokens"])) {
+    errors.push({
+      field: "promptTokens",
+      message: "promptTokens is required and must be a non-negative integer",
+      severity: "error",
+    });
+  }
+
+  // completionTokens
+  if (!isNonNegativeInteger(obj["completionTokens"])) {
+    errors.push({
+      field: "completionTokens",
+      message: "completionTokens is required and must be a non-negative integer",
+      severity: "error",
+    });
+  }
+
+  // tokenCount consistency (warning, not error)
+  if (
+    isNonNegativeInteger(obj["tokenCount"]) &&
+    isNonNegativeInteger(obj["promptTokens"]) &&
+    isNonNegativeInteger(obj["completionTokens"])
+  ) {
+    const sum = obj["promptTokens"] + obj["completionTokens"];
+    if (obj["tokenCount"] !== sum) {
+      errors.push({
+        field: "tokenCount",
+        message: `tokenCount (${obj["tokenCount"]}) != promptTokens + completionTokens (${sum})`,
+        severity: "warning",
+      });
+    }
+  }
+
+  // errorMessage (optional)
+  if (obj["errorMessage"] !== undefined && typeof obj["errorMessage"] !== "string") {
+    errors.push({
+      field: "errorMessage",
+      message: "errorMessage, when present, must be a string",
+      severity: "error",
+    });
+  }
+
+  // Check for unknown fields (warning)
+  const KNOWN_FIELDS = new Set([
+    "runId", "model", "fixture", "timestamp",
+    "latencyMs", "statusCode", "tokenCount",
+    "promptTokens", "completionTokens", "errorMessage",
+  ]);
+  for (const key of Object.keys(obj)) {
+    if (!KNOWN_FIELDS.has(key)) {
+      errors.push({
+        field: key,
+        message: `Unknown field "${key}"`,
+        severity: "warning",
+      });
+    }
+  }
+
+  // If any errors (severity === "error"), reject
+  const hasErrors = errors.some((e) => e.severity === "error");
+  if (hasErrors) {
+    return { ok: false, errors };
+  }
+
+  // Build the typed record
+  const record: RequestMetricsRecord = {
+    runId: obj["runId"] as string,
+    model: obj["model"] as string,
+    fixture: obj["fixture"] as string,
+    timestamp: obj["timestamp"] as string,
+    latencyMs: obj["latencyMs"] as number,
+    statusCode: obj["statusCode"] as number,
+    tokenCount: obj["tokenCount"] as number,
+    promptTokens: obj["promptTokens"] as number,
+    completionTokens: obj["completionTokens"] as number,
+  };
+
+  if (obj["errorMessage"] !== undefined) {
+    record.errorMessage = obj["errorMessage"] as string;
+  }
+
+  return { ok: true, value: record };
+}
+```
+
+---
+
+## `src/parser.ts`
+
+```typescript
+import type {
+  ParseEvent,
+  ParserState,
+  RequestMetricsRecord,
+  ValidationError,
+} from "./types.js";
+import { validateRecord } from "./validator.js";
+
+/**
+ * Incremental NDJSON parser with bounded memory.
+ *
+ * The parser accepts chunks of bytes (or strings) and emits complete
+ * line-by-line parse events. A sliding buffer holds at most `maxLineBytes`
+ * bytes; if a single line exceeds that bound the parser emits a
+ * "malformed" event and resets the buffer, preventing unbounded memory
+ * growth from a malicious or corrupted stream.
+ */
+export class NdjsonParser {
+  private buffer: string

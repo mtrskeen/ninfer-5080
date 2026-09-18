@@ -1,0 +1,229 @@
+**Part I: The Silence of the Summit**
+
+The darkness was not merely an absence of light; it was a physical weight, pressing against the curved glass walls of the Aethelgard Mountain Observatory. For Elias Thorne, a man who had spent the last decade measuring the invisible deviations of photons, the sudden death of the main generator was a violation more profound than any crime. He stood in the center of the control room, his breath pluming in the frigid air, watching the emergency backup lights flicker on with a sickly, amber pulse. They were low, casting long, distorted shadows across the floor, turning the high-tech instruments into jagged silhouettes.
+
+Elias adjusted his glasses, his fingers trembling slightly—not from fear, but from the shock of the silence. The hum of the cooling fans, the rhythmic whir of the telescope’s tracking motors, the soft chime of data packets arriving from the satellite uplink—all of it had ceased. In its place was the howling wind outside, a sound that usually felt distant and academic, now visceral and threatening.
+
+"Is everyone okay?" called out a voice from the corner. It was Dr. Aris Vane, the lead astrophysicist, his tone clipped and anxious.
+
+Elias moved toward the heavy steel door that separated the control room from the observation deck. "I’m checking the manual override," he said, his voice steady despite the chaos in his chest. "If the primary breaker tripped, we might have a short circuit in the external cabling. If so, we’re locked in until dawn."
+
+He reached for the handle. It was cold, biting through his leather gloves. As he turned it, the mechanism groaned—a metallic shriek that echoed off the concrete walls. The door swung open, revealing the observation deck beyond. The view was spectacular, even in the dark. The Milky Way stretched across the sky like a spilled river of diamonds, undimmed by city lights. But Elias didn’t look at the stars. He looked at the figure slumped over the primary console.
+
+It was Julian Kross, the observatory’s director. Or rather, what appeared to be him.
+
+Julian was lying face down, his head resting on the edge of the desk, one arm dangling limply toward the floor. A pool of dark liquid was spreading beneath him, catching the faint glow of the emergency exit sign. It looked like blood.
+
+"Aris!" Elias shouted, the name tearing from his throat. "Get away from him! Is he breathing?"
+
+Aris froze, his eyes wide, reflecting the terror in the small space. "I... I thought he fainted. The power cut happened right after he made that statement about the funding. I didn’t think..."
+
+Elias rushed forward, dropping to his knees beside the body. He pressed two fingers to Julian’s neck. Nothing. He checked the carotid artery again. Still nothing. He tilted Julian’s head back gently, checking the mouth. No pulse. No respiration.
+
+Panic, cold and sharp, spiked in Elias’s chest. This was impossible. They were alone on the mountain. The storm had sealed the pass three hours ago. There was no way anyone could have gotten in. And yet, here lay the director, seemingly murdered in a room that should have been impenetrable.
+
+"Call the police," Elias said, though he knew the signal wouldn't reach the valley below. "And don’t touch anything else. Not a thing."
+
+As he spoke, he noticed something. Julian’s hand, the one that wasn’t dangling, was clenched tightly around a small object. It was a brass key, worn smooth by use, its teeth intricate and complex. It wasn’t a standard skeleton key. It was a master key, the kind used for the vault that held the raw data drives.
+
+Elias stared at the key, then at the darkened screens. The mystery had just begun, and the clock was already ticking.
+
+**Part II: The Upside-Down Sky**
+
+The emergency lights provided just enough illumination to see, but not enough to hide. Elias stood up, his knees aching, and surveyed the scene with the detached precision that defined his profession. To the untrained eye, this was a tragedy. To Elias, it was a system failure. And systems failed in predictable ways.
+
+He walked slowly around the perimeter of the control room, his shoes squeaking softly on the polished floor. He needed to understand the sequence of events. The power had cut out exactly at 11:42 PM, according to the timestamp on the last log entry before the screen went black. That was four minutes ago. In four minutes, Julian had been struck, or poisoned, or killed.
+
+Elias stopped in front of the large wall-mounted star chart, a vintage print from 1954 that Julian had insisted on keeping as a nod to tradition. It depicted the night sky over the northern hemisphere. Under normal lighting, it was a beautiful, accurate map of constellations. But under the dim, amber emergency lights, the details were obscured.
+
+Elias leaned in, squinting. Something was wrong. The orientation of the chart seemed off. The North Star, Polaris, was positioned near the bottom edge of the frame, while the Southern Cross was near the top. He frowned. He knew this chart well. He had helped hang it years ago. It was supposed to be oriented with North at the top.
+
+He pulled out his pocket flashlight, a high-intensity LED unit he always carried for field calibration. He clicked it on, aiming the beam directly at the chart. The light revealed the truth instantly. The chart had been rotated 180 degrees. It was printed upside down.
+
+Why would Julian do that? Or why would someone else?
+
+Elias stepped back, his mind racing. In astrophysics, orientation is everything. An upside-down chart isn’t just a mistake; it’s a signal. It implies a reversal of coordinates. If you plot a celestial object using inverted latitude and longitude, you point your telescope in the exact opposite direction. You look at the ground instead of the sky.
+
+"Did he say anything before the power went out?" Elias asked, turning to Aris, who was still standing by the door, looking pale and shaken.
+
+Aris swallowed hard. "He was talking about the new grant. He said, 'We are looking in the wrong direction.' I thought it was a metaphor for our research focus. But now..." Aris trailed off, looking at the dead man.
+
+Elias nodded slowly. "Metaphors are dangerous things, Aris. Especially when they’re literal."
+
+He walked back to the body. He carefully pried the brass key from Julian’s stiffening fingers. It was warm. Not hot, but distinctly warmer than the ambient temperature of the room. Brass conducts heat efficiently, but for it to be this warm, it must have been held recently, or exposed to a heat source.
+
+Elias placed the key on the desk, next to a steaming cup of tea. The steam was rising in thin, lazy curls, indicating the liquid was still very hot. It was unsweetened, plain water with leaves. Julian was known for his strict dietary habits; he never added sugar or milk.
+
+Eleven seconds. That was the gap in the timeline. Elias checked his own watch. 11:46 PM. The power had cut at 11:42. Four minutes had passed. But the voice recorder on the desk, which had been running continuously to log ambient noise for atmospheric analysis, showed a gap in the recording.
+
+Elias picked up the digital recorder. It was a ruggedized model, designed to withstand the harsh conditions of the mountain. He scrolled through the file list. The audio file for the current session was corrupted, or rather, truncated. The metadata showed that the file ended abruptly at 11:41:49 and resumed at 11:42:00.
+
+Eleven seconds missing.
+
+In those eleven seconds, the world had changed. Someone had entered, acted, and left—or stayed. But if they had stayed, where were they? The room was locked. The windows were sealed against the storm. The only exit was the door behind Aris.
+
+Unless...
+
+Elias looked at the brass key again. Then at the upside-down chart. Then at the tea.
+
+"Aris," Elias said quietly. "Who else has this key?"
+
+Aris blinked. "Just Julian. And me. I have a copy for emergencies. But I left mine in my locker downstairs. I haven’t been down there since dinner."
+
+"And the other staff? The technicians?"
+
+"Only Sarah and Ben. They’re in the dormitory. They haven’t left the building since the storm hit."
+
+Elias nodded. Three suspects. One victim. One locked room. And a puzzle that defied logic.
+
+He looked at the door. It was closed. The lock was engaged from the inside. He tested the handle. It didn’t budge. The deadbolt was thrown.
+
+"We are trapped," Elias said. "And one of us is a killer."
+
+**Part III: The Weight of Brass**
+
+Elias sat down at the secondary terminal, the one that ran on the battery backup. It was slow, sluggish, but it worked. He needed to analyze the data. The voice recorder’s gap was the key, literally and figuratively.
+
+He opened the audio file, isolating the segment before the gap. It was just static, the hiss of wind against the glass. Then, at 11:41:40, a sound. A click. The sound of a latch engaging.
+
+Then, silence.
+
+At 11:42:00, the recording resumed. It captured the sound of the power cutting out—the deep, resonant *thud* of the capacitors discharging. And then, the crash. The sound of something heavy hitting the desk.
+
+But there was no footsteps. No breathing. No struggle.
+
+Elias played it again. And again. He listened to the eleven-second void. It was empty. Truly empty. No background noise. No wind. Just digital silence.
+
+That was impossible. The wind outside was a gale. The microphone was sensitive enough to pick up the vibration of the telescope’s gears. If the room had been occupied during those eleven seconds, the wind would have been audible, unless... the microphone had been disabled.
+
+Elias looked at the recorder. It was sitting on the desk, next to the tea. The power cable was plugged into the wall. But the wall outlet was dead. How was the recorder still on?
+
+He traced the cable. It didn’t go to the wall. It went to a small, portable power bank, tucked under the desk. Someone had swapped the power source. Someone had prepared for this.
+
+Elias stood up, his heart pounding. This wasn’t a spontaneous act of violence. This was premeditated. The key was warm because it had been used to unlock the door from the outside, or perhaps to access the vault. The tea was hot because it had been brewed recently. The chart was upside down because it was a signal.
+
+And the victim was alive.
+
+Elias had checked Julian’s pulse. He had found none. But he had also noticed something else. Julian’s skin was flushed, not pale. His lips were blue, not white. And most importantly, when Elias had tilted his head, he had seen a faint tremor in the eyelids.
+
+He walked back to the body. He knelt down again. This time, he didn’t check for a pulse. He checked for movement.
+
+"Julian," he whispered. "Open your eyes."
+
+Nothing.
+
+"Julian, I know you’re awake. I know you’re playing dead. I can see the micro-movements in your facial muscles. You’re holding your breath. You’re in a state of induced shock, or perhaps you’ve taken something to suppress your nervous system."
+
+Still nothing.
+
+Elias sighed. He stood up and walked to the door. He took the brass key in his hand. He held it up to the light. The teeth were unique. They matched the pattern of the vault lock, but they also had a secondary cut, a tiny notch that fit into the emergency release mechanism of the main door.
+
+It was a dual-purpose key. It could open the vault, or it could bypass the deadbolt from the outside.
+
+But the door was locked from the inside.
+
+Unless the key hadn’t been used to enter the room. It had been used to leave it.
+
+Elias realized his mistake. He had assumed the killer had come in. But what if the killer was already inside? What if Julian hadn’t been attacked by an intruder, but by someone who had been waiting?
+
+He looked at Aris. "Where were you at 11:41?"
+
+Aris shifted uncomfortably. "I was in the hallway. I heard the power cut, so I came in immediately."
+
+"The hallway is connected to the dormitory corridor," Elias said. "You could have come from anywhere."
+
+"I was coming from the lab," Aris said, his voice gaining strength. "I was checking the sensors."
+
+Elias nodded. "And the tea? Who brewed it?"
+
+"Julian did. He likes his tea strong. He brewed it twenty minutes ago."
+
+"Twenty minutes," Elias repeated. "And the steam is still rising. That means it was poured recently. Or re-heated."
+
+Elias looked at the cup. The tea was dark, almost black. It smelled of bergamot. Earl Grey. Julian’s favorite.
+
+But Julian didn’t drink Earl Grey. He drank pure green tea.
+
+Elias’s eyes narrowed. "This isn’t Julian’s tea, Aris. This is yours. You take your tea with lemon, but no sugar. And you always brew it extra hot. Julian preferred it lukewarm."
+
+Aris’s face drained of color. "I... I don’t know what you mean."
+
+"You know exactly what you mean," Elias said, his voice cold. "You staged the scene. You knocked Julian out, possibly with a blow to the temple, or with a drug in his drink. You put the key in his hand to make it look like he died trying to protect the data. You flipped the chart to create a red herring, suggesting a navigation error. And you deleted eleven seconds of audio to cover up the sound of the struggle."
+
+"But the door is locked!" Aris cried. "How could I have done this if I was in the hallway?"
+
+Elias smiled, a thin, sad expression. "You didn’t need to lock the door from the outside. You locked it from the inside. After you knocked him out, you engaged the deadbolt. Then you waited for the power to cut. When it did, you panicked. You realized you had trapped yourself in with the body. So you fled. But you forgot the key."
+
+"No!" Aris shouted. "I didn’t kill him! I was just... I was angry. He was going to fire me. He said I was incompetent. I pushed him. I swear I only pushed him!"
+
+Elias shook his head. "A push doesn’t break a neck. And a push doesn’t require a brass key."
+
+**Part IV: The Geometry of Guilt**
+
+The tension in the room was palpable, thick as the smoke that began to curl from the overheating backup batteries. Elias ignored it. He focused on the geometry of the situation.
+
+If Aris had pushed Julian, and Julian had fallen, the angle of impact would be different. A fall onto a hard desk would cause blunt force trauma, likely fatal, but it would leave specific marks. Bruising on the side of the head corresponding to the direction of the fall.
+
+Elias examined Julian’s head. There was a lump, yes. But it was on the crown, the top of the skull. That indicated a vertical impact. A strike from above.
+
+And the key. The brass key was warm. Why would a key be warm if it had been lying in a dead man’s hand for four minutes? Bodies cool rapidly. Objects held in them retain heat longer, but not indefinitely. The warmth suggested recent contact. Recent handling.
+
+By whom?
+
+Elias looked at the third person in the room. Sarah. She had been quiet, observing, her arms crossed tightly over her chest. She was the junior technician, responsible for the daily maintenance of the equipment. She had access to the tools. She had access to the keys.
+
+"Sarah," Elias said. "You have the other key, don’t you?"
+
+Sarah flinched. "I... I keep a spare in my kit. In case of emergencies."
+
+"Show me."
+
+She hesitated, then reached into her jacket pocket and pulled out a small, velvet pouch. She untied it and withdrew a brass key. It was identical to the one in Julian’s hand.
+
+Elias took it. He compared the two keys side by side. They were twins. Made from the same die.
+
+"Why do you have a duplicate?" Elias asked.
+
+"Because Julian was careless," Sarah said, her voice trembling. "He lost his original key twice last month. I made a copy to ensure we weren’t locked out if it happened again. It was for safety."
+
+"Safety," Elias mused. "Or opportunity."
+
+He looked at the upside-down chart again. "You flipped the chart, didn’t you? To signal the others that something was wrong? Or to confuse them?"
+
+Sarah’s eyes filled with tears. "I didn’t kill him, Elias. I love him. He’s my mentor. My father figure. I would never hurt him."
+
+"Then who did?" Elias asked.
+
+"I don’t know!" she wailed. "I was in the dormitory! I was sleeping!"
+
+Elias looked at Aris. "And you? Where were you really?"
+
+Aris slumped against the wall, defeated. "I was in the lab. I was calibrating the spectrometer. I saw the power cut on the monitor. I ran here. I didn’t see anyone."
+
+"Did you hear the click?" Elias asked.
+
+"What click?"
+
+"The latch. At 11:41:40. The sound of the door locking."
+
+Aris frowned. "I didn’t hear anything. I was focused on the data."
+
+Elias nodded. He was beginning to piece it together. The eleven seconds of silence in the recorder. The warm key. The hot tea. The upside-down chart.
+
+It wasn’t a murder. It was a rescue.
+
+Elias walked to the body and knelt down again. He placed a hand on Julian’s shoulder. "Julian, please. Wake up."
+
+Nothing.
+
+Elias looked at the tea cup. He picked it up. It was still hot. He sniffed it. Bergamot. Earl Grey.
+
+He looked at Aris. "You drink Earl Grey, don’t you? With lemon."
+
+Aris nodded, confused. "Yes."
+
+"And you left the cup here?"
+
+"I... I brought it in with me. I was thirsty."
+
+Elias set the cup down. "Then why is it full? You said you were thirsty. You would have drunk some

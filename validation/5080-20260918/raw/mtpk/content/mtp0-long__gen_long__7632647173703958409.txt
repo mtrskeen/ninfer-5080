@@ -1,0 +1,101 @@
+2. In contrast, the prefill phase is compute bound, as the matrix multiplications for processing a long prompt utilize high arithmetic intensity to saturate GPU cores before memory bandwidth becomes the bottleneck.
+
+3. Roofline analysis provides the mathematical framework for determining whether a specific tensor operation is limited by floating-point operations per second or by memory throughput, guiding hardware selection and algorithm optimization.
+
+4. Quantization reduces the bit-width of model weights from 16-bit or 32-bit to 8-bit or lower, significantly decreasing memory footprint and increasing data movement efficiency at the cost of some precision loss.
+
+5. Speculative decoding accelerates inference by using a smaller, faster draft model to propose multiple tokens, which are then verified in parallel by the larger target model, reducing the number of sequential steps required.
+
+6. KV cache management is critical for autoregressive generation, as storing key and value tensors for previous tokens avoids redundant computation but requires careful memory allocation strategies to prevent overflow.
+
+7. PagedAttention optimizes KV cache usage by managing memory in non-contiguous blocks, similar to virtual memory paging in operating systems, thereby eliminating memory fragmentation and improving batch size flexibility.
+
+8. Continuous batching allows new requests to be added to an ongoing inference batch without waiting for the entire batch to finish, maximizing GPU utilization and reducing average latency for variable-length sequences.
+
+9. Tensor parallelism splits the weight matrices of large language models across multiple GPUs, allowing the computation of a single layer to be distributed, which is essential for models that exceed the memory capacity of a single device.
+
+10. Pipeline parallelism divides the model into stages, with each stage assigned to a different device, creating a pipeline where data flows through stages sequentially, reducing the memory requirement per device but introducing bubble time.
+
+11. Mixed-precision training utilizes both 16-bit and 32-bit precision for different parts of the network, leveraging the speed of 16-bit arithmetic while maintaining the numerical stability of 32-bit master weights during gradient updates.
+
+12. Gradient accumulation simulates a larger batch size by accumulating gradients over several forward-backward passes before performing an optimizer step, allowing for effective training on hardware with limited memory.
+
+13. Layer-wise offloading moves intermediate activations to CPU memory after they are no longer needed on the GPU, freeing up GPU memory for other layers or larger batches, at the cost of increased data transfer latency.
+
+14. Zero Redundancy Optimizer (ZeRO) partitions optimizer states, gradients, and parameters across devices, ensuring that each device only stores a fraction of the total state, thus drastically reducing memory overhead in distributed training.
+
+15. FlashAttention is an algorithm that performs exact attention computation with improved I/O complexity by tiling the computation in SRAM, avoiding the need to write the full attention matrix to slower global memory.
+
+16. The attention mechanism’s quadratic complexity with respect to sequence length necessitates approximation techniques such as sparse attention or sliding window attention for handling extremely long contexts efficiently.
+
+17. Multi-head attention splits the embedding dimension into multiple heads, allowing the model to attend to different representation subspaces simultaneously, which enhances the model's ability to capture diverse relationships within the data.
+
+18. Positional encodings inject information about the relative or absolute position of tokens into the input embeddings, enabling the transformer architecture to understand the order of words, which is inherently permutation-invariant.
+
+19. Rotary Position Embedding (RoPE) applies rotation matrices to query and key vectors based on their positions, providing a more robust and extrapolatable method of encoding positional information compared to additive sinusoidal encodings.
+
+20. Load balancing in distributed inference ensures that all worker nodes receive a comparable amount of computational work, preventing idle time on some GPUs while others are saturated, which is crucial for maintaining high throughput.
+
+21. Request routing algorithms direct incoming user prompts to the optimal server instance based on current load, model version, or specific capabilities, often employing consistent hashing to maintain session affinity.
+
+22. Model compression techniques such as pruning remove redundant weights or neurons that contribute minimally to the output, reducing model size and inference cost while aiming to preserve overall accuracy.
+
+23. Knowledge distillation trains a smaller student model to mimic the behavior of a larger teacher model, transferring learned representations and reducing inference costs while retaining a significant portion of the teacher’s performance.
+
+24. Activation checkpointing, or gradient checkpointing, trades compute for memory by recomputing intermediate activations during the backward pass instead of storing them, which is vital for training deep networks with limited VRAM.
+
+25. The forward pass in a transformer consists of alternating layers of self-attention and feed-forward networks, each followed by layer normalization, forming the basic block that is repeated to increase model depth.
+
+26. Feed-forward networks in transformers typically expand the hidden dimension by a factor of four before projecting back down, acting as a non-linear feature transformation layer that processes token representations independently.
+
+27. Layer normalization stabilizes training by normalizing the inputs to each layer across the feature dimension for each individual sample, making the training process less sensitive to initialization and learning rate choices.
+
+28. Residual connections add the input of a sub-layer directly to its output, allowing gradients to flow more easily through deep networks and mitigating the vanishing gradient problem inherent in very deep architectures.
+
+29. The softmax function converts raw logits into a probability distribution over the vocabulary, ensuring that the sum of probabilities for all possible next tokens equals one, which is necessary for sampling.
+
+30. Temperature scaling adjusts the sharpness of the probability distribution produced by the softmax; lower temperatures make the distribution sharper (more deterministic), while higher temperatures flatten it (more random).
+
+31. Top-k sampling restricts the selection of the next token to the k most probable candidates, effectively truncating the long tail of unlikely tokens to reduce the risk of generating nonsensical or low-quality text.
+
+32. Top-p sampling, or nucleus sampling, selects the smallest set of tokens whose cumulative probability exceeds a threshold p, dynamically adjusting the candidate pool size based on the entropy of the distribution.
+
+33. Repetition penalty modifies the logits by dividing the score of previously generated tokens by a penalty factor, discouraging the model from repeating the same phrases or words in consecutive generations.
+
+34. Frequency penalty reduces the likelihood of tokens that have already been used in the generation, promoting lexical diversity and preventing the model from getting stuck in repetitive loops.
+
+35. Presence penalty applies a fixed reduction to the logit of any token that has appeared at least once in the context, regardless of how many times it has appeared, encouraging the introduction of new topics.
+
+36. Beam search maintains a set of the best partial sequences (beams) at each step, expanding them in parallel to find the globally most probable complete sequence, which is computationally expensive but yields higher quality results than greedy decoding.
+
+37. Greedy decoding selects the single most probable token at each step, which is the fastest method but often leads to local optima and repetitive or bland text due to the lack of exploration.
+
+38. Constrained decoding restricts the set of allowed next tokens to those that satisfy specific grammatical or semantic constraints, ensuring that the generated output adheres to a predefined schema or format.
+
+39. JSON mode in inference engines forces the model to output valid JSON by masking invalid tokens during generation, which is essential for integrating LLMs with structured data pipelines and API integrations.
+
+40. Function calling allows the model to generate arguments for external tools or APIs, enabling the LLM to perform actions beyond text generation, such as querying databases or executing code.
+
+41. Tool use orchestration involves managing the lifecycle of external tool calls, including parsing the model’s intent, executing the tool, feeding the result back to the model, and continuing the conversation based on the output.
+
+42. Context window limits define the maximum number of tokens a model can process at once, constraining the amount of historical information or document content that can be included in a single inference request.
+
+43. Sliding window context management retains only the most recent N tokens in the active context, discarding older information to stay within the model’s limit, which is suitable for short-term conversational coherence.
+
+44. Summarization-based context compression condenses older dialogue turns into a brief summary that replaces the raw text, preserving key information while significantly reducing the token count required for the context window.
+
+45. Retrieval-Augmented Generation (RAG) retrieves relevant external documents from a vector database and includes them in the prompt, grounding the model’s response in specific factual data to reduce hallucinations.
+
+46. Vector embeddings convert text into high-dimensional numerical vectors that capture semantic meaning, allowing for efficient similarity search and retrieval of related documents in RAG systems.
+
+47. Chunking strategies determine how long documents are split into smaller segments for embedding; common methods include fixed-size splitting, sentence splitting, or recursive character splitting to balance context completeness and retrieval precision.
+
+48. Semantic search retrieves documents based on the cosine similarity between the query embedding and document chunk embeddings, rather than relying on exact keyword matching, enabling better recall for paraphrased queries.
+
+49. Hybrid retrieval combines sparse retrieval (like BM25) with dense vector retrieval, leveraging the strengths of both exact term matching and semantic understanding to improve overall retrieval accuracy.
+
+50. Reranking models take the top candidates from a coarse retrieval stage and score them more precisely, reordering them to place the most relevant documents at the top of the context provided to the LLM.
+
+51. Hallucination refers to the generation of plausible-sounding but factually incorrect or fabricated information by the model, often occurring when the model lacks sufficient grounding in the provided context.
+
+52. Fact-checking pipelines cross-reference generated claims against trusted knowledge bases or retrieved

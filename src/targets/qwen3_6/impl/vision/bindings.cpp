@@ -35,7 +35,11 @@ VisionBackbonePlan bind_vision_backbone(artifact::Binder& binder,
                                         {3 * VisionBackboneConfig::hidden, VisionBackboneConfig::hidden});
         target.qkv_bias          = bind(prefix + "attention/qkv_bias", NumericFormat::BF16,
                                         {3 * VisionBackboneConfig::hidden});
-        target.output            = bind(prefix + "attention/output", NumericFormat::Q5G64_F16S,
+        const auto* out_desc     = binder.find_tensor(prefix + "attention/output");
+        target.output_format     = (out_desc && out_desc->format == NumericFormat::Q4G64_F16S)
+                                       ? NumericFormat::Q4G64_F16S
+                                       : NumericFormat::Q5G64_F16S;
+        target.output            = bind(prefix + "attention/output", target.output_format,
                                         {VisionBackboneConfig::hidden, VisionBackboneConfig::hidden});
         target.output_bias       = bind(prefix + "attention/output_bias", NumericFormat::BF16,
                                         {VisionBackboneConfig::hidden});
@@ -43,7 +47,11 @@ VisionBackbonePlan bind_vision_backbone(artifact::Binder& binder,
                                         {VisionBackboneConfig::intermediate, VisionBackboneConfig::hidden});
         target.fc1_bias          = bind(prefix + "mlp/fc1_bias", NumericFormat::BF16,
                                         {VisionBackboneConfig::intermediate});
-        target.fc2               = bind(prefix + "mlp/fc2", NumericFormat::Q5G64_F16S,
+        const auto* fc2_desc     = binder.find_tensor(prefix + "mlp/fc2");
+        target.fc2_format        = (fc2_desc && fc2_desc->format == NumericFormat::Q4G64_F16S)
+                                       ? NumericFormat::Q4G64_F16S
+                                       : NumericFormat::Q5G64_F16S;
+        target.fc2               = bind(prefix + "mlp/fc2", target.fc2_format,
                                         {VisionBackboneConfig::hidden, VisionBackboneConfig::intermediate});
         target.fc2_bias =
             bind(prefix + "mlp/fc2_bias", NumericFormat::BF16, {VisionBackboneConfig::hidden});
@@ -115,7 +123,7 @@ VisionCommonWeights materialize_vision_common(const artifact::MaterializedArtifa
         target.qkv_bias = artifact::materialized_tensor(
             materialized, source.qkv_bias, NumericFormat::BF16, {3 * VisionBackboneConfig::hidden});
         target.output = artifact::materialized_weight(
-            materialized, source.output, NumericFormat::Q5G64_F16S, VisionBackboneConfig::hidden,
+            materialized, source.output, source.output_format, VisionBackboneConfig::hidden,
             VisionBackboneConfig::hidden);
         target.output_bias = artifact::materialized_tensor(
             materialized, source.output_bias, NumericFormat::BF16, {VisionBackboneConfig::hidden});
@@ -126,7 +134,7 @@ VisionCommonWeights materialize_vision_common(const artifact::MaterializedArtifa
             artifact::materialized_tensor(materialized, source.fc1_bias, NumericFormat::BF16,
                                           {VisionBackboneConfig::intermediate});
         target.fc2 = artifact::materialized_weight(
-            materialized, source.fc2, NumericFormat::Q5G64_F16S, VisionBackboneConfig::hidden,
+            materialized, source.fc2, source.fc2_format, VisionBackboneConfig::hidden,
             VisionBackboneConfig::intermediate);
         target.fc2_bias = artifact::materialized_tensor(
             materialized, source.fc2_bias, NumericFormat::BF16, {VisionBackboneConfig::hidden});

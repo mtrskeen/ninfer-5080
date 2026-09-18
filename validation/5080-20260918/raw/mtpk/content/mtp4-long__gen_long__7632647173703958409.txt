@@ -1,0 +1,63 @@
+2. In contrast, a multi-stream decode step is compute bound because the batch size increases arithmetic intensity, allowing the GPU to perform more operations per byte of memory access.
+3. The roofline model illustrates this transition by plotting achievable performance against arithmetic intensity, showing where the bottleneck shifts from memory bandwidth to floating-point throughput.
+4. Memory hierarchy latency increases with each level of distance from the processor core, necessitating careful data placement to hide these delays through prefetching or double buffering.
+5. Cache line pollution occurs when a single thread accesses scattered memory locations, evicting useful data for other threads and reducing overall cache hit rates in shared caches.
+6. Spatial locality refers to the tendency for nearby memory addresses to be accessed close together in time, which allows hardware prefetchers to effectively load adjacent data into the cache.
+7. Temporal locality describes the tendency for recently accessed data to be accessed again soon, making it a prime candidate for retention in high-speed cache levels.
+8. Instruction-level parallelism (ILP) exploits multiple independent instructions within a single thread that can be issued simultaneously, provided they do not share data dependencies.
+9. Data-level parallelism (DLP) involves performing the same operation on multiple data elements simultaneously, which is the primary mechanism exploited by SIMD architectures like AVX or NEON.
+10. Thread-level parallelism (TLP) utilizes multiple execution units or cores to execute different threads concurrently, requiring sufficient instruction stream independence to maintain pipeline efficiency.
+11. Control dependence introduces serial bottlenecks in the instruction stream, as the outcome of a branch determines which subsequent instructions are fetched and executed.
+12. Branch prediction accuracy directly impacts pipeline efficiency; mispredictions cause significant penalties due to the need to flush the pipeline and refetch from the correct path.
+13. Static branch predictors use simple heuristics based on the history of previous branch outcomes to guess the direction of upcoming branches without dynamic state tracking.
+14. Dynamic branch predictors utilize complex state machines, such as gshare or perceptron predictors, to adapt their predictions based on recent execution history for higher accuracy.
+15. Speculative execution allows the processor to guess the outcome of a conditional branch and execute instructions down the predicted path before the condition is definitively resolved.
+16. Transactional memory systems allow speculative execution of code segments that may conflict with other threads, committing changes atomically only if no conflicts are detected.
+17. Vectorization transforms scalar loops into vector operations, processing multiple data points in a single instruction, thereby increasing arithmetic intensity and reducing loop overhead.
+18. Auto-vectorizers analyze control flow graphs to determine if loops are safe for vectorization, checking for array aliasing, loop-carried dependencies, and non-uniform access patterns.
+19. Loop unrolling reduces the overhead of loop control instructions by duplicating loop body content, allowing more instructions to be scheduled in parallel within a single iteration.
+20. Software pipelining overlaps the setup, main, and teardown phases of loop iterations, enabling the processor to keep functional units busy across iteration boundaries.
+21. Register pressure refers to the demand for physical registers to hold live variables; excessive pressure leads to spilling, where values are written to memory, degrading performance.
+22. The critical path of a circuit or algorithm is the longest path through the dependency graph, determining the minimum possible latency for completing a task.
+23. Throughput is defined as the number of completed tasks per unit of time, whereas latency is the time taken to complete a single task; optimizing one often requires trade-offs with the other.
+24. Little’s Law states that the average number of items in a system equals the arrival rate multiplied by the average time an item spends in the system, linking queue length to throughput and latency.
+25. Utilization represents the fraction of time a resource is busy; high utilization increases average wait times non-linearly, following M/M/1 queueing theory principles.
+26. Amdahl’s Law quantifies the maximum speedup obtainable by parallelizing a portion of a program, showing diminishing returns as the parallel fraction approaches 100%.
+27. Gustafson’s Law counters Amdahl’s by arguing that problems scale with the number of processors, implying that larger problem sizes can maintain linear speedup if the workload grows.
+28. Strassen’s algorithm demonstrates that matrix multiplication can be performed with fewer multiplications than the standard method, reducing the asymptotic complexity of the operation.
+29. Fast Fourier Transform (FFT) algorithms reduce the complexity of polynomial multiplication and convolution from O(n^2) to O(n log n), enabling efficient signal processing.
+30. Locality-sensitive hashing (LSH) allows for approximate nearest neighbor searches in high-dimensional spaces by hashing similar items into the same buckets with high probability.
+31. Bloom filters provide space-efficient probabilistic data structures for membership testing, using multiple hash functions to mark bits in a bit array.
+32. Count-min sketch offers a compact way to estimate frequency counts in large datasets, trading exactness for memory efficiency and constant-time updates.
+33. Consistent hashing distributes data across nodes in a distributed system by mapping keys to a circle, ensuring minimal data movement when nodes are added or removed.
+34. Raft consensus algorithm simplifies distributed consensus by electing a leader who controls all writes, providing strong consistency with easier reasoning compared to Paxos.
+35. Quorum systems ensure data availability in partitioned networks by requiring a majority of replicas to acknowledge writes and reads, preventing stale data reads.
+36. CAP theorem dictates that a distributed data store cannot simultaneously provide Consistency, Availability, and Partition tolerance; systems must choose two of the three guarantees.
+37. Base effect in distributed systems refers to the baseline level of errors or failures that persists regardless of mitigation strategies, setting a lower bound on error rates.
+38. Circuit breakers prevent cascading failures by stopping requests to a failing downstream service after a threshold of errors is reached, allowing the service to recover.
+39. Backpressure mechanisms propagate slowdown signals upstream through a data pipeline, forcing producers to throttle output when consumers cannot keep up.
+40. Deadlocks occur when a set of processes are blocked indefinitely, each waiting for a resource held by another process in the set, violating the circular wait condition.
+41. Liveness properties ensure that something good will eventually happen, such as a request being processed, contrasting with safety properties which ensure nothing bad ever happens.
+42. Safety properties guarantee that invalid states are never entered, such as two trains entering the same tunnel simultaneously, regardless of how long the system runs.
+43. Formal verification uses mathematical methods to prove that a system specification meets its requirements, providing absolute assurance but often suffering from scalability issues.
+44. Model checking explores all possible states of a finite-state system to verify that no illegal state is reachable, automatically generating counterexamples for failures.
+45. The halting problem proves that no general algorithm can determine whether an arbitrary program will terminate or run forever, limiting the scope of automated analysis.
+46. Turing completeness implies that a system can simulate any Turing machine, granting it universal computational power but potentially introducing undecidable behaviors.
+47. Deterministic finite automata (DFAs) recognize regular languages using a fixed set of states and transitions, providing predictable and analyzable behavior.
+48. Context-free grammars generate languages by applying production rules to symbols, capable of describing nested structures like parentheses or function calls.
+49. Parsing algorithms, such as LR or LL, convert raw input strings into structured syntax trees, validating the syntactic correctness of programming languages or protocols.
+50. Type systems statically classify expressions to prevent certain kinds of bugs, such as adding integers to strings, before the program is executed.
+51. Strong type safety ensures that well-typed programs cannot go wrong at runtime, preserving invariants like memory safety and null pointer avoidance.
+52. Garbage collection automatically reclaims memory occupied by objects that are no longer reachable from any active reference, eliminating manual memory management errors.
+53. Reference counting tracks the number of pointers to each object, deallocating memory immediately when the count drops to zero, offering deterministic cleanup but cyclic dependency issues.
+54. Mark-and-sweep garbage collectors identify live objects by traversing the object graph from roots, then reclaiming unreachable objects, suitable for heap-allocated languages.
+55. Generational garbage collection optimizes collection by assuming most objects die young, focusing intensive scans on the young generation while less frequently scanning the old generation.
+56. Write barriers are small pieces of code inserted into assignments to update garbage collector metadata, ensuring the collector remains aware of object references during mutation.
+57. Concurrent garbage collectors pause application threads briefly to start and stop collections, minimizing downtime but introducing latency spikes in real-time systems.
+58. Incremental garbage collectors spread the work of collecting memory over time, performing small steps interleaved with application execution to avoid long pauses.
+59. Compacting garbage collectors move live objects to eliminate fragmentation, creating contiguous free space, though the cost of moving pointers must be weighed against benefits.
+60. Memory fragmentation occurs when allocated memory becomes scattered in small blocks, making it impossible to allocate large contiguous regions despite having sufficient total free space.
+61. Virtual memory allows processes to use more memory than physically installed by mapping logical addresses to physical frames, using swap space for overflow.
+62. Page faults occur when a process accesses a page not currently in physical memory, triggering the operating system to load the page from disk, causing a context switch.
+63. Working set size represents the set of pages a process actively needs for smooth execution; if physical memory is smaller, thrashing occurs due to frequent page faults.
+64. Demand paging

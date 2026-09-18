@@ -1,0 +1,107 @@
+2. In contrast, a single-stream encode step is compute bound because the matrix multiplications for the full sequence length dominate the memory access latency, requiring high arithmetic intensity to saturate GPU cores.
+
+3. The roofline model provides a visual framework for distinguishing between bandwidth-bound and compute-bound regions by plotting achievable floating-point operations per second against arithmetic intensity.
+
+4. Arithmetic intensity is defined as the ratio of floating-point operations performed to the number of bytes accessed from main memory, serving as the primary metric for classifying algorithmic bottlenecks.
+
+5. Weight quantization reduces the memory footprint of model parameters by representing them with fewer bits per value, thereby lowering the bandwidth requirement for weight loading during inference.
+
+6. Activation quantization compresses intermediate tensor values in neural network layers, which can reduce memory traffic but requires careful calibration to prevent significant accuracy degradation.
+
+7. Mixed-precision training utilizes lower precision formats like FP16 or BF16 for forward and backward passes while maintaining higher precision for master weights to balance speed and numerical stability.
+
+8. Tensor parallelism splits individual matrix multiplication operations across multiple devices, allowing each device to hold only a fraction of the weight matrix and reducing per-device memory pressure.
+
+9. Pipeline parallelism partitions the model into sequential stages distributed across different devices, where each device processes a subset of layers, introducing bubble time due to inter-stage dependencies.
+
+10. The pipeline bubble represents the idle time in pipeline parallelism when data has not yet arrived from the previous stage or has already been sent to the next stage, reducing overall hardware utilization.
+
+11. Micro-batching divides the total batch size into smaller sub-batches to mitigate pipeline bubbles, allowing multiple micro-batches to flow through the pipeline concurrently to keep all stages busy.
+
+12. Sequence parallelism distributes the computation along the sequence dimension rather than the feature dimension, which is particularly effective for layer normalization and dropout layers that operate on the entire sequence.
+
+13. Context parallelism partitions the attention mechanism’s key and value tensors across devices, enabling the processing of extremely long context lengths that exceed the memory capacity of a single GPU.
+
+14. Ring attention implements context parallelism by passing key and value blocks in a circular fashion among devices, allowing each device to compute local attention scores and combine them incrementally.
+
+15. Block-wise quantization applies different scaling factors to different subsets of weights within a layer, offering higher precision retention compared to per-tensor quantization at the cost of slightly increased metadata overhead.
+
+16. SmoothQuant migrates quantization difficulty from activations to weights by applying a smoothing factor to input activations, ensuring that both weights and activations remain within a manageable range for low-precision formats.
+
+17. Grouped Query Attention (GQA) reduces the number of key and value heads relative to query heads, decreasing the memory footprint of KV caches without significantly compromising model quality.
+
+18. Multi-head Latent Attention (MLA) projects queries, keys, and values into a lower-dimensional latent space before computing attention, drastically reducing the memory bandwidth required for KV cache storage.
+
+19. The Key-Value (KV) cache stores intermediate attention states for previously generated tokens, allowing incremental decoding without recomputing the entire history, which grows linearly with sequence length.
+
+20. PagedAttention manages the KV cache using non-contiguous memory blocks, similar to operating system virtual memory, to eliminate memory fragmentation and improve memory utilization efficiency.
+
+21. Speculative decoding accelerates generation by using a smaller draft model to propose multiple tokens, which are then verified in parallel by a larger target model, reducing the number of sequential steps required.
+
+22. Tree-based speculative decoding constructs a tree of candidate tokens from the draft model, allowing the target model to verify multiple branching paths simultaneously to maximize the probability of accepting longer sequences.
+
+23. Lookahead decoding uses a small model to predict future tokens based on current context, enabling the large model to process these predictions in parallel, effectively overlapping computation with memory transfers.
+
+24. Medusa head architecture adds multiple prediction heads to the final layer of a language model, allowing it to predict several future tokens in a single forward pass, increasing throughput at the cost of additional compute.
+
+25. EAGLE (Efficient Acceleration via Generation of Language Encodings) leverages the correlation between hidden states and next-token predictions to construct a lightweight draft model that shares most weights with the target model.
+
+26. Batch size scaling impacts latency and throughput differently; increasing batch size amortizes fixed costs like kernel launch overhead, improving throughput until the batch exceeds the GPU’s memory capacity or optimal occupancy threshold.
+
+27. Dynamic batching groups requests of varying lengths into batches by padding shorter sequences, balancing the trade-off between waiting for a full batch and the computational waste of padding.
+
+28. Continuous batching allows new requests to be added to an ongoing batch as soon as their initial tokens are ready, and completed requests to be removed immediately, maximizing GPU utilization throughout the lifecycle of a request.
+
+29. Preemption mechanisms in continuous batching suspend active requests to prioritize higher-priority or shorter-latency requests, resuming them later to ensure fair resource allocation and meet Service Level Objectives (SLOs).
+
+30. Priority scheduling assigns weights to incoming requests based on user tier or task criticality, influencing the order in which they are admitted to the inference engine’s queue.
+
+31. Fair queuing algorithms ensure that no single user or application monopolizes GPU resources, distributing compute cycles evenly among competing tasks to maintain predictable latency for all users.
+
+32. Deadline-aware scheduling prioritizes requests based on their remaining time to meet a latency SLO, preempting or delaying requests that are unlikely to meet their deadlines to preserve system stability.
+
+33. Energy-proportional scaling adjusts the power state of hardware components based on load, entering low-power sleep modes during periods of low utilization to reduce overall energy consumption.
+
+34. Dynamic Voltage and Frequency Scaling (DVFS) varies the clock frequency and voltage of processors to match the instantaneous demand, optimizing the energy-delay product for real-time workloads.
+
+35. Heterogeneous computing systems utilize multiple types of accelerators, such as CPUs, GPUs, and FPGAs, assigning specific tasks to the most suitable hardware based on its architectural strengths.
+
+36. CPU-GPU hybrid inference offloads computationally intensive matrix multiplications to the GPU while handling control flow, data preprocessing, and post-processing on the CPU, leveraging the strengths of both architectures.
+
+37. FPGA-based inference accelerators offer deterministic latency and high energy efficiency for fixed-point operations, making them suitable for edge deployments where power budget is strictly constrained.
+
+38. ASICs (Application-Specific Integrated Circuits) provide the highest performance-per-watt for specific neural network topologies by hardwiring the operations, eliminating the flexibility overhead of general-purpose processors.
+
+39. Network-on-Chip (NoC) architectures facilitate high-bandwidth communication between processing cores and memory controllers within a chip, minimizing internal data movement latency in many-core accelerators.
+
+40. Cache hierarchy optimization involves tuning the size and associativity of L1, L2, and L3 caches to maximize hit rates for the specific access patterns of the inference workload.
+
+41. Instruction-level parallelism (ILP) exploits multiple independent instructions within a basic block, allowing out-of-order execution engines to issue multiple operations per cycle to hide memory latency.
+
+42. Data-level parallelism (DLP) executes the same instruction on multiple pieces of data simultaneously, which is the primary parallelism exploited by SIMD units in modern CPUs and vector units in GPUs.
+
+43. Thread-level parallelism (TLP) enables multiple threads to execute concurrently, hiding memory latency by switching to other threads when one is stalled, which is fundamental to GPU execution models.
+
+44. Warp divergence in GPU architectures occurs when threads within a warp execute different branches of code, causing the hardware to serialize the execution of these paths, reducing effective throughput.
+
+45. Memory coalescing ensures that threads in a warp access contiguous memory locations, allowing the hardware to service the entire warp’s memory request in a single transaction, maximizing bandwidth utilization.
+
+46. Bank conflicts in shared memory occur when multiple threads in a warp access the same memory bank, forcing the hardware to serialize the accesses, which can be mitigated by padding arrays to distribute addresses across banks.
+
+47. Register pressure refers to the number of registers required by a kernel; excessive register usage reduces the occupancy of the GPU, limiting the number of resident warps and thus the ability to hide memory latency.
+
+48. Occupancy is the ratio of the number of active warps on a streaming multiprocessor to the maximum possible number of warps, directly influencing the potential for latency hiding.
+
+49. Kernel launch overhead is the time taken to initialize and dispatch a kernel to the GPU; frequent launching of small kernels can dominate execution time if the computation per kernel is insufficient to amortize this cost.
+
+50. Kernel fusion combines multiple sequential operations into a single kernel to eliminate intermediate memory writes and reads, reducing memory traffic and improving overall throughput.
+
+51. Operator fusion in deep learning frameworks automatically identifies adjacent operators that can be merged, such as convolution followed by batch normalization, to generate optimized fused kernels.
+
+52. Graph partitioning in distributed inference determines how to split the computational graph across devices, balancing load and minimizing communication volume between partitions.
+
+53. Communication-computation overlap hides the latency of data transfer between devices by performing it concurrently with independent computations, requiring careful scheduling to avoid resource contention.
+
+54. All-reduce operations aggregate data from all participating nodes and distribute the result back to all nodes, commonly used for gradient synchronization in distributed training and result aggregation in inference.
+
+55. Ring all-reduce minimizes the communication volume by passing partial results in a circular topology, where each node contributes and

@@ -51,3 +51,9 @@ JOURNEY.md
 PROJECT-STATE.md
 SMALLER-WEIGHTS-REVIEW.md
 CONTEXT-128K-REVIEW.md
+
+# Published validation docs and raw results for the 5080 fork (un-ignore)
+!docs/BENCHMARKS.md
+!docs/BENCHMARKS.ru.md
+!docs/BUILDING.md
+!docs/BUILDING.ru.md

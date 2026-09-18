@@ -1,0 +1,118 @@
+2026-09-18:20:52:32 WARNING  [config.evaluate_config:337] --limit SHOULD ONLY BE USED FOR TESTING. REAL METRICS SHOULD NOT BE COMPUTED USING LIMIT.
+2026-09-18:20:52:32 INFO     [config.evaluate_config:357] Using default fewshot_as_multiturn=True.
+2026-09-18:20:52:35 INFO     [_cli.run:392] Selected Tasks: ['niah_single_1', 'niah_multikey_1']
+2026-09-18:20:52:35 INFO     [evaluator:214] Setting random seed to 0 | Setting numpy seed to 1234 | Setting torch manual seed to 1234 | Setting fewshot manual seed to 1234
+2026-09-18:20:52:35 INFO     [evaluator:239] Initializing openai-chat-completions model, with arguments: {'model': 'qwen3.8-27b-16gb', 'base_url': 'http://127.0.0.1:18199/v1/chat/completions', 'tokenizer': '/validate/qwen38_tokenizer', 'num_concurrent': 1, 'max_retries': 2, 'timeout': 3600}
+2026-09-18:20:52:35 INFO     [models.api_models:176] Using max length 2048 - 1
+2026-09-18:20:52:35 INFO     [models.api_models:179] Concurrent requests are disabled. To enable concurrent requests, set `num_concurrent` > 1.
+2026-09-18:20:52:35 INFO     [models.api_models:197] Using tokenizer None
+[transformers] PyTorch was not found. Models won't be available and only tokenizers, configuration and file/data utilities can be used.
+2026-09-18:20:52:39 WARNING  [api.task:861] niah_single_1: Custom kwargs can be passed to `--metadata` in console (as json string) or to the TaskManager.
+For example --metadata='{"max_seq_lengths":[4096, 8192]}'. For details see task Readme.
+2026-09-18:20:52:39 INFO     [tasks.ruler.common_utils:54] Using tokenizer /validate/qwen38_tokenizer for synthetic tasks.
+
+Generating synthetic samples: repeat | 8192:   0%|          | 0/500 [00:00<?, ?it/s]
+Generating synthetic samples: repeat | 8192:   4%|▍         | 19/500 [00:00<00:02, 182.20it/s]
+Generating synthetic samples: repeat | 8192:   8%|▊         | 38/500 [00:00<00:02, 182.53it/s]
+Generating synthetic samples: repeat | 8192:  11%|█▏        | 57/500 [00:00<00:02, 179.72it/s]
+Generating synthetic samples: repeat | 8192:  15%|█▌        | 76/500 [00:00<00:02, 180.83it/s]
+Generating synthetic samples: repeat | 8192:  19%|█▉        | 95/500 [00:00<00:02, 181.60it/s]
+Generating synthetic samples: repeat | 8192:  23%|██▎       | 114/500 [00:00<00:02, 183.57it/s]
+Generating synthetic samples: repeat | 8192:  27%|██▋       | 133/500 [00:00<00:01, 185.26it/s]
+Generating synthetic samples: repeat | 8192:  31%|███       | 153/500 [00:00<00:01, 188.17it/s]
+Generating synthetic samples: repeat | 8192:  35%|███▍      | 173/500 [00:00<00:01, 191.74it/s]
+Generating synthetic samples: repeat | 8192:  39%|███▊      | 193/500 [00:01<00:01, 193.25it/s]
+Generating synthetic samples: repeat | 8192:  43%|████▎     | 213/500 [00:01<00:01, 193.10it/s]
+Generating synthetic samples: repeat | 8192:  47%|████▋     | 233/500 [00:01<00:01, 192.34it/s]
+Generating synthetic samples: repeat | 8192:  51%|█████     | 253/500 [00:01<00:01, 192.66it/s]
+Generating synthetic samples: repeat | 8192:  55%|█████▍    | 273/500 [00:01<00:01, 190.65it/s]
+Generating synthetic samples: repeat | 8192:  59%|█████▊    | 293/500 [00:01<00:01, 190.09it/s]
+Generating synthetic samples: repeat | 8192:  63%|██████▎   | 313/500 [00:01<00:00, 190.47it/s]
+Generating synthetic samples: repeat | 8192:  67%|██████▋   | 333/500 [00:01<00:00, 189.88it/s]
+Generating synthetic samples: repeat | 8192:  71%|███████   | 353/500 [00:01<00:00, 190.93it/s]
+Generating synthetic samples: repeat | 8192:  75%|███████▍  | 373/500 [00:01<00:00, 191.36it/s]
+Generating synthetic samples: repeat | 8192:  79%|███████▊  | 393/500 [00:02<00:00, 190.43it/s]
+Generating synthetic samples: repeat | 8192:  83%|████████▎ | 413/500 [00:02<00:00, 191.73it/s]
+Generating synthetic samples: repeat | 8192:  87%|████████▋ | 433/500 [00:02<00:00, 191.98it/s]
+Generating synthetic samples: repeat | 8192:  91%|█████████ | 453/500 [00:02<00:00, 189.75it/s]
+Generating synthetic samples: repeat | 8192:  94%|█████████▍| 472/500 [00:02<00:00, 186.10it/s]
+Generating synthetic samples: repeat | 8192:  98%|█████████▊| 491/500 [00:02<00:00, 183.40it/s]
+Generating synthetic samples: repeat | 8192: 100%|██████████| 500/500 [00:02<00:00, 188.02it/s]
+2026-09-18:20:52:43 WARNING  [api.task:861] niah_multikey_1: Custom kwargs can be passed to `--metadata` in console (as json string) or to the TaskManager.
+For example --metadata='{"max_seq_lengths":[4096, 8192]}'. For details see task Readme.
+Warning: You are sending unauthenticated requests to the HF Hub. Please set a HF_TOKEN to enable higher rate limits and faster downloads.
+
+Generating synthetic samples: essay | 8192:   0%|          | 0/500 [00:00<?, ?it/s]
+Generating synthetic samples: essay | 8192:   3%|▎         | 13/500 [00:00<00:03, 125.24it/s]
+Generating synthetic samples: essay | 8192:   5%|▌         | 26/500 [00:00<00:03, 125.66it/s]
+Generating synthetic samples: essay | 8192:   8%|▊         | 39/500 [00:00<00:03, 123.77it/s]
+Generating synthetic samples: essay | 8192:  10%|█         | 52/500 [00:00<00:03, 124.62it/s]
+Generating synthetic samples: essay | 8192:  13%|█▎        | 66/500 [00:00<00:03, 128.63it/s]
+Generating synthetic samples: essay | 8192:  16%|█▌        | 80/500 [00:00<00:03, 129.83it/s]
+Generating synthetic samples: essay | 8192:  19%|█▉        | 94/500 [00:00<00:03, 130.24it/s]
+Generating synthetic samples: essay | 8192:  22%|██▏       | 108/500 [00:00<00:03, 129.95it/s]
+Generating synthetic samples: essay | 8192:  24%|██▍       | 122/500 [00:00<00:02, 130.20it/s]
+Generating synthetic samples: essay | 8192:  27%|██▋       | 136/500 [00:01<00:02, 128.93it/s]
+Generating synthetic samples: essay | 8192:  30%|██▉       | 149/500 [00:01<00:02, 128.54it/s]
+Generating synthetic samples: essay | 8192:  32%|███▏      | 162/500 [00:01<00:02, 125.95it/s]
+Generating synthetic samples: essay | 8192:  35%|███▌      | 175/500 [00:01<00:02, 124.52it/s]
+Generating synthetic samples: essay | 8192:  38%|███▊      | 188/500 [00:01<00:02, 124.19it/s]
+Generating synthetic samples: essay | 8192:  40%|████      | 201/500 [00:01<00:02, 125.71it/s]
+Generating synthetic samples: essay | 8192:  43%|████▎     | 214/500 [00:01<00:02, 125.23it/s]
+Generating synthetic samples: essay | 8192:  45%|████▌     | 227/500 [00:01<00:02, 123.28it/s]
+Generating synthetic samples: essay | 8192:  48%|████▊     | 240/500 [00:01<00:02, 123.57it/s]
+Generating synthetic samples: essay | 8192:  51%|█████     | 253/500 [00:02<00:01, 124.36it/s]
+Generating synthetic samples: essay | 8192:  53%|█████▎    | 267/500 [00:02<00:01, 126.51it/s]
+Generating synthetic samples: essay | 8192:  56%|█████▌    | 281/500 [00:02<00:01, 127.83it/s]
+Generating synthetic samples: essay | 8192:  59%|█████▉    | 295/500 [00:02<00:01, 129.39it/s]
+Generating synthetic samples: essay | 8192:  62%|██████▏   | 309/500 [00:02<00:01, 131.77it/s]
+Generating synthetic samples: essay | 8192:  65%|██████▍   | 323/500 [00:02<00:01, 132.90it/s]
+Generating synthetic samples: essay | 8192:  67%|██████▋   | 337/500 [00:02<00:01, 133.28it/s]
+Generating synthetic samples: essay | 8192:  70%|███████   | 351/500 [00:02<00:01, 132.90it/s]
+Generating synthetic samples: essay | 8192:  73%|███████▎  | 365/500 [00:02<00:01, 132.16it/s]
+Generating synthetic samples: essay | 8192:  76%|███████▌  | 379/500 [00:02<00:00, 131.27it/s]
+Generating synthetic samples: essay | 8192:  79%|███████▊  | 393/500 [00:03<00:00, 129.16it/s]
+Generating synthetic samples: essay | 8192:  81%|████████  | 406/500 [00:03<00:00, 127.26it/s]
+Generating synthetic samples: essay | 8192:  84%|████████▍ | 419/500 [00:03<00:00, 124.82it/s]
+Generating synthetic samples: essay | 8192:  86%|████████▋ | 432/500 [00:03<00:00, 123.52it/s]
+Generating synthetic samples: essay | 8192:  89%|████████▉ | 445/500 [00:03<00:00, 118.15it/s]
+Generating synthetic samples: essay | 8192:  92%|█████████▏| 458/500 [00:03<00:00, 120.01it/s]
+Generating synthetic samples: essay | 8192:  94%|█████████▍| 471/500 [00:03<00:00, 121.50it/s]
+Generating synthetic samples: essay | 8192:  97%|█████████▋| 484/500 [00:03<00:00, 122.44it/s]
+Generating synthetic samples: essay | 8192:  99%|█████████▉| 497/500 [00:03<00:00, 121.12it/s]
+Generating synthetic samples: essay | 8192: 100%|██████████| 500/500 [00:03<00:00, 126.23it/s]
+2026-09-18:20:52:50 INFO     [evaluator_utils:472] Selected tasks:
+2026-09-18:20:52:50 INFO     [evaluator_utils:506] Task: niah_multikey_1 (ruler/niah_multikey_1.yaml)
+2026-09-18:20:52:50 INFO     [evaluator_utils:506] Task: niah_single_1 (ruler/niah_single_1.yaml)
+2026-09-18:20:52:50 INFO     [evaluator:314] niah_single_1: Using gen_kwargs: {'do_sample': False, 'temperature': 0.0, 'max_gen_toks': 128, 'until': []}
+2026-09-18:20:52:50 INFO     [evaluator:314] niah_multikey_1: Using gen_kwargs: {'do_sample': False, 'temperature': 0.0, 'max_gen_toks': 128, 'until': []}
+2026-09-18:20:52:50 INFO     [api.task:312] Building contexts for niah_single_1 on rank 0...
+
+  0%|          | 0/3 [00:00<?, ?it/s]
+100%|██████████| 3/3 [00:00<00:00, 1479.12it/s]
+2026-09-18:20:52:50 INFO     [api.task:312] Building contexts for niah_multikey_1 on rank 0...
+
+  0%|          | 0/3 [00:00<?, ?it/s]
+100%|██████████| 3/3 [00:00<00:00, 1554.98it/s]
+2026-09-18:20:52:50 INFO     [evaluator:589] Running generate_until requests
+2026-09-18:20:52:50 INFO     [models.api_models:752] Tokenized requests are disabled. Context + generation length is not checked.
+
+Requesting API:   0%|          | 0/6 [00:00<?, ?it/s]2026-09-18:20:52:50 WARNING  [models.api_models:375] Cannot determine EOS string to pass to stop sequence. Manually set by passing `eos_string` to model_args.
+
+Requesting API:  17%|█▋        | 1/6 [00:04<00:22,  4.54s/it]
+Requesting API:  33%|███▎      | 2/6 [00:09<00:18,  4.54s/it]
+Requesting API:  50%|█████     | 3/6 [00:13<00:13,  4.54s/it]
+Requesting API:  67%|██████▋   | 4/6 [00:18<00:09,  4.54s/it]
+Requesting API:  83%|████████▎ | 5/6 [00:22<00:04,  4.53s/it]
+Requesting API: 100%|██████████| 6/6 [00:27<00:00,  4.53s/it]
+Requesting API: 100%|██████████| 6/6 [00:27<00:00,  4.53s/it]
+fatal: not a git repository (or any of the parent directories): .git
+2026-09-18:20:53:18 INFO     [loggers.evaluation_tracker:247] Saving results aggregated
+openai-chat-completions ({'model': 'qwen3.8-27b-16gb', 'base_url': 'http://127.0.0.1:18199/v1/chat/completions', 'tokenizer': '/validate/qwen38_tokenizer', 'num_concurrent': 1, 'max_retries': 2, 'timeout': 3600}), gen_kwargs: ({}), limit: 3.0, num_fewshot: None, batch_size: 1
+|     Tasks     |Version|Filter|n-shot|Metric|   |Value|   |Stderr|
+|---------------|------:|------|-----:|-----:|---|----:|---|------|
+|niah_multikey_1|      1|none  |     0|  4096|↑  |   -1|±  |   N/A|
+|               |       |none  |     0|  8192|↑  |    1|±  |   N/A|
+|niah_single_1  |      1|none  |     0|  4096|↑  |   -1|±  |   N/A|
+|               |       |none  |     0|  8192|↑  |    1|±  |   N/A|
+

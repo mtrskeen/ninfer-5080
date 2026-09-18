@@ -1,0 +1,110 @@
+[
+ {
+  "case": "empty_messages",
+  "status": 400,
+  "body": "{\"error\":{\"code\":null,\"message\":\"messages must be a non-empty array\",\"param\":\"messages\",\"type\":\"invalid_request_error\"}}",
+  "health": {
+   "status": 200,
+   "body": "{\"status\":\"ok\"}"
+  }
+ },
+ {
+  "case": "missing_role",
+  "status": 400,
+  "body": "{\"error\":{\"code\":null,\"message\":\"message 0 must have a string role\",\"param\":\"messages\",\"type\":\"invalid_request_error\"}}",
+  "health": {
+   "status": 200,
+   "body": "{\"status\":\"ok\"}"
+  }
+ },
+ {
+  "case": "bad_role",
+  "status": 400,
+  "body": "{\"error\":{\"code\":\"unsupported_role\",\"message\":\"unsupported role: wizard\",\"param\":\"messages\",\"type\":\"invalid_request_error\"}}",
+  "health": {
+   "status": 200,
+   "body": "{\"status\":\"ok\"}"
+  }
+ },
+ {
+  "case": "unknown_model",
+  "status": 404,
+  "body": "{\"error\":{\"code\":\"model_not_found\",\"message\":\"model 'nope' not found\",\"param\":null,\"type\":\"invalid_request_error\"}}",
+  "health": {
+   "status": 200,
+   "body": "{\"status\":\"ok\"}"
+  }
+ },
+ {
+  "case": "zero_max_tokens",
+  "status": 400,
+  "body": "{\"error\":{\"code\":null,\"message\":\"max_tokens must be positive\",\"param\":\"max_tokens\",\"type\":\"invalid_request_error\"}}",
+  "health": {
+   "status": 200,
+   "body": "{\"status\":\"ok\"}"
+  }
+ },
+ {
+  "case": "negative_max_tokens",
+  "status": 400,
+  "body": "{\"error\":{\"code\":null,\"message\":\"max_tokens must be positive\",\"param\":\"max_tokens\",\"type\":\"invalid_request_error\"}}",
+  "health": {
+   "status": 200,
+   "body": "{\"status\":\"ok\"}"
+  }
+ },
+ {
+  "case": "huge_max_tokens",
+  "status": 200,
+  "body": "{\"choices\":[{\"finish_reason\":\"stop\",\"index\":0,\"message\":{\"content\":\"Hi! How can I help you today?\",\"reasoning_content\":\"We need answer to user \\\"hi\\\". Need produce final concise friendly.\\n\",\"role\":\"assistant\"}}],\"created\":1789746580,\"id\":\"chatcmpl-188b2e6605afa8f5\",\"model\":\"qwen3.8-27b-16gb\",\"object\":\"chat.completion\",\"usage\":{\"completion_tokens\":27,\"prompt_tokens\":53,\"total_tokens\":80}}",
+  "health": {
+   "status": 200,
+   "body": "{\"status\":\"ok\"}"
+  }
+ },
+ {
+  "case": "unknown_content_type",
+  "status": 400,
+  "body": "{\"error\":{\"code\":\"modality_not_supported\",\"message\":\"content type 'hologram' is not supported\",\"param\":\"messages\",\"type\":\"invalid_request_error\"}}",
+  "health": {
+   "status": 200,
+   "body": "{\"status\":\"ok\"}"
+  }
+ },
+ {
+  "case": "bad_image_path",
+  "status": 400,
+  "body": "{\"error\":{\"code\":\"modality_not_supported\",\"message\":\"content type 'image' is not supported\",\"param\":\"messages\",\"type\":\"invalid_request_error\"}}",
+  "health": {
+   "status": 200,
+   "body": "{\"status\":\"ok\"}"
+  }
+ },
+ {
+  "case": "empty_content",
+  "status": 200,
+  "body": "{\"choices\":[{\"finish_reason\":\"length\",\"index\":0,\"message\":{\"content\":\"\",\"reasoning_content\":\"We need answer user's request. User\",\"role\":\"assistant\"}}],\"created\":1789746580,\"id\":\"chatcmpl-a82761f2c5aeddcd\",\"model\":\"qwen3.8-27b-16gb\",\"object\":\"chat.completion\",\"usage\":{\"completion_tokens\":8,\"prompt_tokens\":52,\"total_tokens\":60}}",
+  "health": {
+   "status": 200,
+   "body": "{\"status\":\"ok\"}"
+  }
+ },
+ {
+  "case": "malformed_json",
+  "status": 400,
+  "body": "{\"error\":{\"code\":null,\"message\":\"request body is not valid JSON\",\"param\":null,\"type\":\"invalid_request_error\"}}",
+  "health": {
+   "status": 200,
+   "body": "{\"status\":\"ok\"}"
+  }
+ },
+ {
+  "case": "over_context",
+  "status": 400,
+  "body": "{\"error\":{\"code\":\"context_length_exceeded\",\"message\":\"prepared prompt has 97909 tokens, exceeding Engine max_context 65536\",\"param\":\"messages\",\"type\":\"invalid_request_error\"}}",
+  "health": {
+   "status": 200,
+   "body": "{\"status\":\"ok\"}"
+  }
+ }
+]

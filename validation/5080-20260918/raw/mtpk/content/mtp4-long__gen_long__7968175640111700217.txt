@@ -1,0 +1,76 @@
+2. The arithmetic intensity of a GEMM operation increases with matrix dimensions, shifting the bottleneck from memory bandwidth to compute throughput for large layers.
+3. Cache hierarchy design in modern GPUs relies on L1 and L2 caches to exploit temporal and spatial locality, reducing off-chip memory access latency significantly.
+4. Tensor parallelism splits weight matrices across multiple devices, requiring high-bandwidth interconnects to synchronize partial results during the forward pass.
+5. Pipeline parallelism stages model layers across devices, introducing bubble time that must be minimized through micro-batch interleaving techniques.
+6. Zero-redundancy optimizers shard optimizer states across workers, trading communication overhead for significant memory savings during training.
+7. Mixed-precision training leverages FP16 for compute and FP32 for master weights, balancing numerical stability with reduced memory footprint and higher throughput.
+8. Gradient accumulation simulates larger batch sizes by summing gradients over multiple steps before updating parameters, mitigating hardware memory constraints.
+9. Dynamic batching adjusts input sequence lengths in real-time to maximize GPU utilization, requiring efficient padding strategies to handle variable-length data.
+10. Kernel fusion combines multiple element-wise operations into a single kernel launch, reducing memory read/write traffic and instruction overhead.
+11. Graph optimization engines analyze the computational graph to identify subgraphs suitable for fusion or pruning based on operator characteristics.
+12. Automatic differentiation frameworks record operations in a dynamic graph, enabling precise gradient computation without manual derivation.
+13. Checkpointing strategies save model state periodically, balancing recovery time after failures against the storage overhead of frequent snapshots.
+14. Elastic training allows clusters to scale up or down dynamically, requiring robust fault tolerance mechanisms to handle node failures without restarting jobs.
+15. Straggler detection identifies slow nodes in distributed training, triggering mitigation actions like reassignment or speed adjustment to maintain overall progress.
+16. Network topology awareness in job scheduling places communicating tasks on nearby switches to minimize latency and avoid congestion hotspots.
+17. InfiniBand fabrics provide low-latency, high-throughput communication essential for synchronous distributed training workloads.
+18. RDMA (Remote Direct Memory Access) bypasses the CPU and OS kernel, allowing direct data transfer between remote memory buffers for minimal latency.
+19. Collective communication primitives such as AllReduce and AllGather are fundamental building blocks for synchronizing gradients across worker nodes.
+20. Ring AllReduce algorithms optimize data movement by splitting data into chunks, reducing total communication volume compared to naive broadcast methods.
+21. Tree-based AllReduce structures can offer lower latency for small messages but may suffer from imbalance if the tree is not perfectly constructed.
+22. Compression algorithms for gradients, such as top-k sparsification, reduce communication volume by transmitting only the most significant updates.
+23. Quantization-aware training inserts pseudo-quantization nodes during the forward and backward passes, preparing the model for low-precision inference.
+24. Post-training quantization converts a trained FP32 model to INT8 by calibrating activation ranges, offering substantial speedups with minimal accuracy loss.
+25. Pruning techniques remove redundant weights or channels based on magnitude or saliency, creating sparse models that require specialized kernels for efficient execution.
+26. Sparse tensor formats like COO or CSR enable efficient storage and computation for pruned networks, avoiding wasted operations on zero values.
+27. Knowledge distillation transfers capability from a large teacher model to a smaller student model by matching intermediate activations or output distributions.
+28. Neural architecture search automates the design process by exploring a predefined space of layers and connections using reinforcement learning or evolutionary algorithms.
+29. Hyperparameter optimization frameworks use Bayesian optimization to efficiently explore the configuration space, converging to optimal settings faster than grid search.
+30. Data loading pipelines must prefetch and transform data asynchronously to ensure the GPU remains saturated with inputs during computation phases.
+31. Distributed data parallelism replicates the model on each worker, applying different data shards to each copy and averaging gradients afterward.
+32. FSDP (Fully Sharded Data Parallelism) shards both model weights and optimizer states, achieving near-linear scaling efficiency with careful communication overlap.
+33. Sequence parallelism splits the token dimension of attention layers across devices, reducing activation memory usage for long-context models.
+34. Context parallelism partitions the key-value cache across devices, enabling the processing of extremely long sequences that exceed single-device memory limits.
+35. Expert parallelism in Mixture-of-Experts architectures routes tokens to specialized sub-networks, requiring load-balancing losses to prevent expert underutilization.
+36. Router mechanisms in MoE models assign tokens to experts based on gating scores, with auxiliary losses ensuring uniform distribution across experts.
+37. Activation checkpointing trades compute for memory by recomputing intermediate activations during the backward pass instead of storing them.
+38. Selective activation checkpointing stores only high-memory-cost activations, optimizing the trade-off between recomputation cost and memory savings.
+39. Memory fragmentation in GPU allocators can lead to allocation failures despite sufficient total free memory, necessitating defragmentation strategies.
+40. Paged attention techniques manage KV cache memory in fixed-size blocks, similar to virtual memory, to eliminate fragmentation and support variable sequence lengths.
+41. Continuous batching allows new requests to join an ongoing batch as previous ones finish, maximizing throughput in serving scenarios.
+42. Speculative decoding generates draft tokens with a smaller model and verifies them with a larger model, accelerating inference for autoregressive generation.
+43. Speculative sampling ensures the final output distribution matches the target model exactly, preserving quality while gaining speed from parallel verification.
+44. Batched inference groups multiple user requests into a single kernel call, amortizing kernel launch overhead and improving GPU occupancy.
+45. Preemptible instances offer lower costs for cloud training but require checkpointing strategies to handle potential interruptions without data loss.
+46. Spot instance orchestration automatically migrates jobs to stable instances upon preemption, maintaining continuity of long-running training runs.
+47. Resource quotas in cluster schedulers prevent individual users or jobs from monopolizing resources, ensuring fair share and system stability.
+48. Gang scheduling ensures that all processes in a distributed job start simultaneously, preventing deadlocks in tightly coupled parallel applications.
+49. Backfilling algorithms allow shorter jobs to run on idle slots within a reserved slot block, improving overall cluster utilization.
+50. Fair-share scheduling policies allocate resources proportionally based on user history, preventing starvation of less active users.
+51. Priority-based scheduling allows critical jobs to preempt lower-priority tasks, ensuring timely completion of high-value workloads.
+52. Job dependency graphs define execution order for multi-stage workflows, enabling schedulers to optimize resource allocation across stages.
+53. Dynamic resource allocation adjusts the number of allocated GPUs or CPUs during job execution based on observed performance metrics.
+54. Health monitoring agents collect metrics from each node, alerting operators to hardware faults before they impact running jobs.
+55. Automated remediation scripts restart failed services or replace faulty hardware components, minimizing downtime for critical infrastructure.
+56. Log aggregation systems centralize logs from all nodes, enabling rapid debugging and correlation of events across distributed systems.
+57. Tracing frameworks instrument code to track request flow across services, identifying bottlenecks in complex microservice architectures.
+58. Profiling tools capture detailed performance counters, such as kernel execution times and memory bandwidth usage, for deep performance analysis.
+59. A/B testing infrastructure serves different model versions to subsets of users, measuring impact on key business metrics in production.
+60. Canary deployments gradually roll out new model versions to a small percentage of traffic, validating stability before full-scale deployment.
+61. Blue-green deployments maintain two identical environments, switching traffic instantly to the new version to enable rapid rollback if issues arise.
+62. Feature flags allow dynamic toggling of model behaviors or features without redeployment, facilitating controlled experimentation and gradual rollout.
+63. Model versioning systems track changes to model weights, hyperparameters, and metadata, ensuring reproducibility and auditability.
+64. Registry services store model artifacts in a centralized location, providing version control and access management for machine learning assets.
+65. CI/CD pipelines for ML automate testing, validation, and deployment, ensuring that model updates meet quality standards before reaching production.
+66. Data versioning tracks changes to training datasets, linking specific model versions to the exact data used for their training.
+67. Experiment tracking platforms record hyperparameters, metrics, and artifacts for each run, facilitating comparison and analysis of training outcomes.
+68. Reproducibility requirements mandate recording random seeds, software versions, and environment details to ensure results can be replicated.
+69. Compliance monitoring ensures that model predictions adhere to regulatory requirements, such as bias constraints or privacy policies.
+70. Audit trails record all access and modification events for model assets, supporting security investigations and accountability.
+71. Encryption at rest protects model files and training data stored on disk, preventing unauthorized access in case of physical compromise.
+72. Encryption in transit secures data moving between services using TLS, protecting against network interception attacks.
+73. Access control lists define which users or roles can view, modify, or execute specific model artifacts within the registry.
+74. Role-based access control assigns permissions based on user roles, simplifying management in large organizations with diverse responsibilities.
+75. Multi-factor authentication adds an additional layer of security for accessing sensitive model repositories and production systems.
+76. Secret management systems store API keys and credentials securely, injecting them into environments at runtime rather than hardcoding them.
+77. Network isolation segments training clusters from production environments, containing potential breaches or misconfigurations.

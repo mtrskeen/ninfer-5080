@@ -1,0 +1,101 @@
+2. In a distributed file system, metadata consistency is often prioritized over data consistency to ensure that directory listings remain coherent during high-concurrency write operations, preventing ghost files or phantom deletions in the user interface.
+
+3. The principle of least privilege dictates that every component in a microservices architecture should operate with only the minimum set of permissions required to perform its specific function, thereby reducing the potential blast radius of a compromised service.
+
+4. Backpressure mechanisms in stream processing frameworks allow downstream consumers to signal upstream producers to slow down or pause data emission when processing capacity is exceeded, preventing buffer overflow and memory exhaustion in real-time pipelines.
+
+5. A quorum-based consensus algorithm requires a majority of nodes in a cluster to agree on a value before committing a transaction, ensuring that the system remains consistent and available even if a minority of nodes fail or partition.
+
+6. Cache invalidation strategies such as Time-To-Live (TTL) expiration provide a simple mechanism for managing stale data by automatically removing entries after a fixed duration, trading off absolute freshness for reduced computational overhead in complex dependency graphs.
+
+7. The CAP theorem implies that in the presence of a network partition, a distributed system must choose between maintaining strong consistency or remaining available, forcing architects to make explicit trade-offs based on application requirements.
+
+8. Idempotency keys allow clients to safely retry requests without causing duplicate side effects, which is critical in payment processing systems where network timeouts are common but double-charging is unacceptable.
+
+9. Content-addressable storage systems use cryptographic hashes of file content as unique identifiers, enabling efficient deduplication and integrity verification by ensuring that identical data blocks are stored only once regardless of their location in the repository.
+
+10. Load balancers using the round-robin algorithm distribute incoming traffic evenly across backend servers in a cyclic manner, providing a simple baseline for balancing load but potentially ignoring individual server health or current utilization levels.
+
+11. Event sourcing patterns store state changes as a sequence of immutable events rather than current state snapshots, allowing for complete audit trails, temporal queries, and the ability to reconstruct system state at any point in history.
+
+12. Circuit breakers monitor the failure rate of downstream dependencies and temporarily halt all traffic to them when a threshold is exceeded, preventing cascading failures and allowing the failing component time to recover.
+
+13. Zero-copy techniques optimize I/O operations by allowing data to be transferred from disk to network sockets without copying it through user-space buffers, significantly reducing CPU overhead and latency in high-throughput network services.
+
+14. The observer pattern enables loose coupling between components by allowing multiple subscribers to react to state changes in a subject without the subject needing to know the specific details of each subscriber’s implementation.
+
+15. Sharding partitions a database into smaller, manageable pieces distributed across multiple nodes, improving scalability and performance by allowing parallel processing of queries that touch only a subset of the total dataset.
+
+16. Dead letter queues capture messages that have failed processing after a defined number of retries, ensuring that problematic data is preserved for manual inspection and replay rather than being silently discarded or causing infinite retry loops.
+
+17. Service mesh architectures centralize cross-cutting concerns such as traffic management, security, and observability into a sidecar proxy layer, abstracting these complexities away from application code and enabling uniform policy enforcement.
+
+18. Optimistic concurrency control uses version numbers or timestamps to detect conflicts during updates, allowing transactions to proceed without locks and only resolving conflicts at commit time, which improves throughput in read-heavy workloads.
+
+19. API gateways act as a single entry point for all client requests, handling cross-cutting concerns like authentication, rate limiting, and protocol translation before routing traffic to internal microservices, simplifying client integration.
+
+20. Data lineage tracking records the origin and transformation history of data assets, enabling impact analysis, compliance auditing, and root-cause analysis when data quality issues arise in downstream analytics pipelines.
+
+21. Blue-green deployment strategies maintain two identical production environments, allowing new versions to be tested in the green environment before switching traffic from the blue environment, ensuring zero-downtime rollouts and instant rollback capability.
+
+22. The CQRS pattern separates the read model from the write model, allowing each to be optimized independently for its specific access patterns, such as using a normalized relational database for writes and a denormalized search index for reads.
+
+23. Health checks provide continuous monitoring of service liveness and readiness, enabling orchestrators to automatically remove unhealthy instances from rotation and scale resources up or down based on real-time system status.
+
+24. Compression algorithms reduce the size of data in transit or at rest by exploiting statistical redundancies, with trade-offs between compression ratio, CPU cost, and decompression speed depending on the specific algorithm chosen.
+
+25. Multi-tenancy architectures allow a single instance of software to serve multiple customers by logically isolating their data and configurations, achieving economies of scale while maintaining strict boundaries between tenant domains.
+
+26. Retry policies define the conditions under which transient failures should be retried, including backoff strategies and maximum attempt limits, to balance resilience against the risk of amplifying load on already stressed downstream systems.
+
+27. Feature flags enable dynamic toggling of new functionality in production environments without redeploying code, allowing for gradual rollouts, A/B testing, and immediate disabling of buggy features to mitigate risk.
+
+28. Consistent hashing distributes keys across nodes using a hash ring, minimizing data migration when nodes are added or removed compared to modulo-based hashing, which is crucial for scalable key-value stores.
+
+29. Webhooks allow external systems to receive real-time notifications about events by sending HTTP POST requests to pre-configured URLs, decoupling event producers from consumers and enabling reactive integrations.
+
+30. Schema evolution strategies define how data structures can change over time without breaking existing consumers, often involving backward and forward compatibility rules to support long-lived message streams.
+
+31. Rate limiting controls the number of requests a client can make within a specified time window, protecting backend services from abuse, ensuring fair resource allocation, and maintaining system stability under heavy load.
+
+32. Data masking replaces sensitive information with fictitious but structurally similar data, allowing developers and analysts to work with realistic datasets in non-production environments without exposing personal or confidential information.
+
+33. The facade pattern provides a simplified interface to a complex subsystem, hiding underlying complexity and dependencies from clients, which reduces coupling and makes the system easier to use and maintain.
+
+34. Transactional outbox patterns ensure reliable event publishing by writing domain events to a local database table within the same transaction as the business data, then asynchronously reading from the outbox to publish to a message broker.
+
+35. Horizontal scaling increases system capacity by adding more identical instances of a component, distributing load across multiple nodes, which is essential for stateless services that can handle increased concurrency without architectural changes.
+
+36. Vertical scaling increases the capacity of a single node by adding more CPU, memory, or storage, offering simpler management but hitting physical hardware limits sooner than horizontal scaling approaches.
+
+37. Service discovery mechanisms allow microservices to locate each other dynamically at runtime, typically using a central registry or DNS-based approach, facilitating flexible deployment and automatic failover in distributed environments.
+
+38. Immutable infrastructure treats servers as disposable entities that are built from code and replaced upon update, ensuring that the running state always matches the desired configuration defined in the infrastructure-as-code repository.
+
+39. Data serialization formats define how objects are converted into byte streams for transmission or storage, with choices like JSON, Protobuf, or Avro impacting interoperability, performance, and schema evolution capabilities.
+
+40. The adapter pattern converts the interface of a class into another interface that clients expect, allowing incompatible classes to work together without modifying their original code, promoting reuse and flexibility.
+
+41. Distributed tracing tracks the flow of a request across multiple services using unique trace IDs, providing end-to-end visibility into latency bottlenecks, error propagation, and dependency relationships in complex microservice architectures.
+
+42. Backup strategies involve regular snapshots of data to secondary storage, with retention policies defining how long backups are kept, ensuring recoverability from accidental deletion, corruption, or catastrophic hardware failure.
+
+43. Disaster recovery plans outline procedures for restoring critical systems after a major outage, including RTO and RPO targets, to minimize business impact and ensure continuity of operations in the face of regional failures.
+
+44. The decorator pattern adds responsibilities to objects dynamically without affecting other objects, allowing for flexible composition of behaviors such as logging, caching, or encryption around core service implementations.
+
+45. Data validation rules enforce constraints on input data to ensure correctness and integrity, rejecting malformed or malicious payloads before they enter the core business logic, serving as a first line of defense against errors.
+
+46. Load shedding techniques intentionally drop lower-priority requests when system resources are exhausted, preserving the availability and responsiveness of high-priority transactions during peak loads or partial failures.
+
+47. The mediator pattern centralizes communication between multiple objects, reducing direct dependencies and making the interaction logic easier to manage and modify in complex object interactions.
+
+48. Encryption at rest protects stored data from unauthorized access by converting it into ciphertext using strong algorithms, ensuring confidentiality even if physical storage media are stolen or lost.
+
+49. Network segmentation divides the infrastructure into isolated zones with controlled access points, limiting the lateral movement of threats and containing breaches within specific segments of the network.
+
+50. The factory pattern encapsulates the instantiation logic for objects, allowing clients to create objects without specifying the exact class, promoting loose coupling and easier substitution of implementations.
+
+51. Data replication maintains copies of data across multiple locations to improve availability, reduce latency for geographically distributed users, and provide redundancy against site-level failures.
+
+52. Protocol buffers define a language-neutral, extensible mechanism for serializing structured data, offering compact binary format and efficient parsing compared to text-based formats

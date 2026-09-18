@@ -32,10 +32,12 @@ struct VisionLayerPlan {
     artifact::ObjectHandle qkv;
     artifact::ObjectHandle qkv_bias;
     artifact::ObjectHandle output;
+    artifact::NumericFormat output_format = artifact::NumericFormat::Q5G64_F16S;
     artifact::ObjectHandle output_bias;
     artifact::ObjectHandle fc1;
     artifact::ObjectHandle fc1_bias;
     artifact::ObjectHandle fc2;
+    artifact::NumericFormat fc2_format = artifact::NumericFormat::Q5G64_F16S;
     artifact::ObjectHandle fc2_bias;
     artifact::ObjectHandle norm1_weight;
     artifact::ObjectHandle norm1_bias;

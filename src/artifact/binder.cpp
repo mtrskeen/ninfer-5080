@@ -75,6 +75,14 @@ const ObjectDescriptor& Binder::descriptor(ObjectHandle handle) const {
     return reader_.objects()[handle.index];
 }
 
+const TensorDescriptor* Binder::find_tensor(std::string_view name) const noexcept {
+    const ObjectDescriptor* object = reader_.find(name);
+    if (object == nullptr) {
+        return nullptr;
+    }
+    return std::get_if<TensorDescriptor>(object);
+}
+
 PayloadSpan Binder::payload(ObjectHandle handle) const {
     return reader_.payload(descriptor(handle));
 }

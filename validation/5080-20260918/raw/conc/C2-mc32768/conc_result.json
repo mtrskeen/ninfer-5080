@@ -1,0 +1,73 @@
+[
+ {
+  "concurrency": 2,
+  "kv_capacity": 65536,
+  "max_context": 32768,
+  "max_new": 2048,
+  "fixture": "decode_prose",
+  "makespan_seconds": 30.325893498957157,
+  "per_request": [
+   {
+    "prompt_tokens": 91,
+    "computed_prefill_tokens": 91,
+    "completion_tokens": 1900,
+    "finish_reason": "stop_token",
+    "prefix_cache_hit_tokens": 0,
+    "prepare_seconds": 0.000357842,
+    "vision_seconds": 0.0,
+    "prefill_seconds": 0.19672423200000003,
+    "decode_seconds": 29.838740797000014,
+    "total_seconds": 30.243766336,
+    "ttft_seconds": 0.197211875,
+    "prefill_tok_s": 462.57646592312017,
+    "server_ttft_ms": 197.08207400000003,
+    "decode_tok_s": 63.64209578813478,
+    "spec_backend": "mtp",
+    "spec_draft_window": 3,
+    "spec_rounds": 745,
+    "spec_drafted": 2235,
+    "spec_accepted": 1157,
+    "spec_acceptance": 0.5176733780760626,
+    "spec_tokens_per_round": 2.5530201342281877,
+    "spec_fallback_steps": 0,
+    "accepted_per_position": [
+     564,
+     381,
+     212
+    ]
+   },
+   {
+    "prompt_tokens": 91,
+    "computed_prefill_tokens": 91,
+    "completion_tokens": 1900,
+    "finish_reason": "stop_token",
+    "prefix_cache_hit_tokens": 0,
+    "prepare_seconds": 0.000262024,
+    "vision_seconds": 0.0,
+    "prefill_seconds": 0.19854058200000002,
+    "decode_seconds": 29.84075473700002,
+    "total_seconds": 30.324402158,
+    "ttft_seconds": 0.47442238600000003,
+    "prefill_tok_s": 458.3445816634102,
+    "server_ttft_ms": 198.80260600000003,
+    "decode_tok_s": 63.63780060982842,
+    "spec_backend": "mtp",
+    "spec_draft_window": 3,
+    "spec_rounds": 745,
+    "spec_drafted": 2235,
+    "spec_accepted": 1157,
+    "spec_acceptance": 0.5176733780760626,
+    "spec_tokens_per_round": 2.5530201342281877,
+    "spec_fallback_steps": 0,
+    "accepted_per_position": [
+     564,
+     381,
+     212
+    ]
+   }
+  ],
+  "aggregate_decode_tok_s": 125.23950861103582,
+  "aggregate_acceptance": 0.5176733780760626,
+  "vram_peak_mib": 14964
+ }
+]

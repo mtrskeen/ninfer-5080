@@ -59,7 +59,8 @@ void RequestMemory::activate(std::size_t bytes, std::size_t alignment) {
     }
 
     if (impl_->arena == nullptr || bytes > impl_->arena->capacity()) {
-        throw std::invalid_argument("request transient exceeds its frozen startup capacity");
+        (void)cudaSetDevice(impl_->device);
+        impl_->arena = std::make_unique<DeviceArena>(bytes);
     }
 
     impl_->active_bytes     = bytes;
@@ -70,6 +71,10 @@ void RequestMemory::activate(std::size_t bytes, std::size_t alignment) {
 void RequestMemory::deactivate() noexcept {
     impl_->active_bytes     = 0;
     impl_->active_alignment = 1;
+    if (impl_->arena != nullptr) {
+        (void)cudaSetDevice(impl_->device);
+        impl_->arena.reset();
+    }
 }
 
 TransientRegion RequestMemory::region() const noexcept {

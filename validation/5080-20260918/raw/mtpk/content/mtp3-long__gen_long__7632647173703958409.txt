@@ -1,0 +1,149 @@
+2. In contrast, a multi-stream decode step is often compute bound because the arithmetic intensity increases as batch size grows, allowing better utilization of tensor cores.
+
+3. Quantization reduces memory bandwidth requirements by compressing weights to lower precision, which directly alleviates the bottleneck identified in single-stream inference.
+
+4. The roofline model provides a visual framework for determining whether a specific operation is latency-bound or throughput-bound based on its operational intensity.
+
+5. Memory hierarchy design must balance capacity, speed, and cost, with registers offering the fastest access followed by L1, L2, and finally main memory.
+
+6. Cache coherence protocols like MESI ensure that multiple processors see a consistent view of shared memory, preventing data corruption in multi-core systems.
+
+7. Prefetching algorithms predict future memory accesses to hide latency, but aggressive prefetching can pollute the cache and reduce hit rates for sequential workloads.
+
+8. Virtual memory systems allow processes to address more memory than physically available by swapping pages between RAM and disk, introducing significant latency penalties.
+
+9. Page table walk acceleration via TLBs (Translation Lookaside Buffers) is critical for performance, as every memory access requires address translation.
+
+10. NUMA (Non-Uniform Memory Access) architectures require software awareness of local versus remote memory access costs to optimize data placement.
+
+11. Lock-free data structures avoid deadlocks and priority inversion by using atomic hardware instructions, though they can suffer from livelock under high contention.
+
+12. Wait-free algorithms guarantee that any thread will make progress in a finite number of steps, providing the strongest liveness property for concurrent systems.
+
+13. Memory barriers or fences enforce ordering constraints on memory operations, ensuring that writes are visible to other cores in the intended sequence.
+
+14. Instruction-level parallelism (ILP) allows a processor to execute multiple independent instructions simultaneously, increasing throughput without increasing clock frequency.
+
+15. Out-of-order execution engines reorder instructions at runtime to keep execution units busy, mitigating stalls caused by data dependencies.
+
+16. Branch prediction accuracy heavily impacts pipeline efficiency, as mispredicts cause costly flushes and refills of the instruction pipeline.
+
+17. Speculative execution allows the processor to guess the outcome of conditional branches, executing both paths until the actual result is known.
+
+18. Vectorization transforms scalar loops into vector operations, enabling SIMD (Single Instruction, Multiple Data) units to process multiple data elements in parallel.
+
+19. Autovectorizers in compilers analyze loop nests to determine if they can be safely transformed into vector instructions, respecting alignment and dependency rules.
+
+20. GPU architecture relies on massive thread-level parallelism to hide memory latency, requiring thousands of active threads to keep execution units saturated.
+
+21. Warp divergence in GPUs occurs when threads within a warp take different control flow paths, causing inactive threads to stall while others execute.
+
+22. Shared memory in GPU blocks acts as an on-chip scratchpad, offering much higher bandwidth than global memory for intra-block data exchange.
+
+23. Register file pressure in GPU kernels can limit occupancy, forcing the compiler to spill values to local memory if too many variables are live simultaneously.
+
+24. Asynchronous memory copies in CUDA allow overlapping data transfer with computation, hiding the high latency of host-to-device transfers.
+
+25. Stream synchronization ensures that operations within a stream complete in order, while multiple streams can execute concurrently for overlap.
+
+26. Event objects provide fine-grained synchronization points between streams, allowing precise control over the timing of dependent tasks.
+
+27. Unified memory simplifies programming by allowing a single pointer to access data from either host or device, managed automatically by the driver.
+
+28. Page migration in unified memory moves data between host and GPU as needed, but frequent migrations can negate the benefits of unified addressing.
+
+29. Compute capability determines the feature set and performance characteristics of a GPU, influencing kernel design choices for specific hardware.
+
+30. Tensor cores are specialized hardware units for matrix multiply-accumulate operations, providing massive throughput for deep learning workloads.
+
+31. Mixed-precision training uses lower-precision formats like FP16 for forward and backward passes, maintaining FP32 master weights for stability.
+
+32. Loss scaling is a technique used in mixed-precision training to prevent underflow of gradients in low-precision formats during backpropagation.
+
+33. Sparsity in neural networks allows skipping zero-valued weights during computation, reducing both arithmetic and memory bandwidth requirements.
+
+34. Structured sparsity patterns, such as 2:4 sparsity, enable hardware support for sparse tensor cores, maintaining performance while reducing FLOPs.
+
+35. Pruning removes less important weights from a model post-training, reducing model size and inference cost with minimal accuracy loss.
+
+36. Knowledge distillation transfers knowledge from a large teacher model to a smaller student model, enabling efficient deployment on resource-constrained devices.
+
+37. Model compression techniques combine quantization, pruning, and distillation to fit large models into limited memory budgets on edge devices.
+
+38. Batch normalization standardizes layer inputs across batches, stabilizing training dynamics and allowing higher learning rates.
+
+39. Residual connections allow gradients to flow directly through the network, mitigating the vanishing gradient problem in deep architectures.
+
+40. Layer normalization normalizes inputs across features for each individual sample, providing stability in transformer architectures.
+
+41. Dropout randomly deactivates neurons during training to prevent co-adaptation and overfitting, acting as a form of regularization.
+
+42. Weight decay is a regularization technique that penalizes large weight values, encouraging smaller weights that generalize better.
+
+43. Learning rate schedules adjust the optimizer step size over time, typically starting high and decaying to allow fine-tuning near convergence.
+
+44. Momentum in optimizers accumulates past gradients to accelerate convergence in relevant directions and dampen oscillations.
+
+45. Adam optimizer combines momentum and adaptive learning rates per parameter, offering robust performance across diverse model architectures.
+
+46. Mixed-precision inference reduces memory footprint and increases throughput by using lower-precision activations and weights during serving.
+
+47. Kernel fusion combines multiple operations into a single kernel launch, reducing memory traffic and launch overhead in deep learning frameworks.
+
+48. Graph optimization in inference engines restructures the computation graph to eliminate redundant operations and improve data locality.
+
+49. Operator decomposition breaks complex operators into simpler primitives that can be efficiently mapped to specific hardware units.
+
+50. Memory layout transformations, such as transposing tensors, can improve cache locality and vectorization efficiency for subsequent operations.
+
+51. Pre-computation of constant tensors during graph compilation eliminates runtime calculations, reducing latency for static parts of the network.
+
+52. Dynamic shape handling in inference engines allows models to process variable-sized inputs, requiring flexible memory allocation strategies.
+
+53. Static shape inference enables ahead-of-time optimization, where the compiler knows exact tensor dimensions to generate highly optimized code.
+
+54. Tensor partitioning splits large tensors across multiple devices or cores, enabling distributed inference for models larger than single-node memory.
+
+55. Pipeline parallelism divides the model into stages, processing different micro-batches through different stages concurrently to improve throughput.
+
+56. Data parallelism replicates the entire model on multiple devices, each processing a different shard of the input batch.
+
+57. Model parallelism partitions the model layers across devices, with each device holding a subset of the model parameters.
+
+58. ZeRO (Zero Redundancy Optimizer) partitions optimizer states, gradients, and parameters across devices to reduce memory overhead in distributed training.
+
+59. Gradient accumulation simulates larger batch sizes by accumulating gradients over multiple steps before updating weights, saving memory.
+
+60. Distributed all-reduce operations aggregate gradients from all workers, using ring or tree algorithms to minimize communication time.
+
+61. Ring all-reduce achieves optimal bandwidth utilization for large messages, while tree all-reduce has lower latency for small messages.
+
+62. Overlapping computation and communication in distributed training hides network latency by scheduling collective operations during idle periods.
+
+63. Network topology awareness in distributed systems optimizes communication patterns based on the physical interconnect structure, such as fat trees or dragonfly.
+
+64. RDMA (Remote Direct Memory Access) allows direct data transfer between network adapters and memory, bypassing the CPU for lower latency.
+
+65. NVLink provides high-bandwidth, low-latency interconnects between GPUs within a node, essential for tightly coupled multi-GPU training.
+
+66. InfiniBand offers low-latency, high-throughput networking for inter-node communication in large-scale HPC clusters.
+
+67. Ethernet-based RDMA (RoCE) provides a cost-effective alternative to InfiniBand, leveraging existing Ethernet infrastructure with lossless configuration.
+
+68. Congestion control algorithms in data center networks manage packet flow to prevent bufferbloat and maintain low latency under load.
+
+69. Adaptive routing in network fabrics dynamically selects paths based on current congestion levels, improving load balancing and resilience.
+
+70. Topology-aware scheduling in cluster managers places jobs on nodes with optimal network proximity to minimize communication overhead.
+
+71. Resource isolation in containerized environments prevents noisy neighbors from impacting the performance of other tenants.
+
+72. Cgroups (Control Groups) limit CPU, memory, and I/O resources for processes, enforcing fair sharing in multi-tenant systems.
+
+73. Namespaces provide process isolation, allowing containers to have separate views of the filesystem, network, and PID space.
+
+74. Kubernetes orchestration manages container lifecycles, scaling, and self-healing, abstracting underlying infrastructure details.
+
+75. Service mesh sidecars handle secure communication, traffic management, and observability for microservices, centralizing cross-cutting concerns.
+
+76

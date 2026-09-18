@@ -8,6 +8,30 @@ Q4Launch select_q4_a16_launch(std::int32_t n, std::int32_t k, std::int32_t t) {
     if (t <= 0) { throw std::invalid_argument("q4 linear: unsupported shape or T"); }
 
     switch (k) {
+    case 10240:
+        if (n == 5120) {
+            if (t == 1) { return launch_q4_gemv_r1_w8_k10240; }
+            if (t <= 4) { return launch_q4_simt_r8_c4; }
+            if (t <= 16) { return launch_q4_simt_r8_c8; }
+            return launch_q4_mma_r64_c128;
+        }
+        break;
+    case 6144:
+        if (n == 5120) {
+            if (t == 1) { return launch_q4_gemv_r1_w8_k6144; }
+            if (t <= 7) { return launch_q4_simt_r8_c4; }
+            if (t <= 16) { return launch_q4_simt_r8_c8; }
+            return launch_q4_mma_r64_c128;
+        }
+        break;
+    case 17408:
+        if (n == 5120) {
+            if (t == 1) { return launch_q4_gemv_r1_w8_k17408; }
+            if (t <= 4) { return launch_q4_simt_r8_c4; }
+            if (t <= 16) { return launch_q4_simt_r8_c8; }
+            return launch_q4_mma_r64_c128;
+        }
+        break;
     case 5120:
         switch (n) {
         case 1024:
@@ -31,6 +55,11 @@ Q4Launch select_q4_a16_launch(std::int32_t n, std::int32_t k, std::int32_t t) {
             if (t == 8) { return launch_q4_simt_r8_c8; }
             if (t <= 15) { return launch_q4_simt_r8_c4; }
             if (t == 16) { return launch_q4_simt_r8_c8; }
+            return launch_q4_mma_r64_c128;
+        case 14336:
+            if (t == 1) { return launch_q4_gemv_r1_w8_direct; }
+            if (t <= 4) { return launch_q4_simt_r8_c4; }
+            if (t <= 16) { return launch_q4_simt_r8_c8; }
             return launch_q4_mma_r64_c128;
         case 34816:
             if (t == 1) { return launch_q4_gemv_r1_w8_direct; }
@@ -75,6 +104,10 @@ Q4Launch select_q4_a16_launch(std::int32_t n, std::int32_t k, std::int32_t t) {
     case 1152:
         if (t < 4 || t > 131072 || (t % 4) != 0) { break; }
         switch (n) {
+        case 1152:
+            if (t <= 36) { return launch_q4_simt_r8_c4; }
+            if (t <= 320) { return launch_q4_mma_r64_c64; }
+            return launch_q4_mma_r64_c128;
         case 3456:
             if (t <= 36) { return launch_q4_simt_r8_c4; }
             if (t <= 320) { return launch_q4_mma_r64_c64; }
@@ -88,6 +121,13 @@ Q4Launch select_q4_a16_launch(std::int32_t n, std::int32_t k, std::int32_t t) {
             return launch_q4_mma_r64_c128;
         default:
             break;
+        }
+        break;
+    case 4304:
+        if (n == 1152 && t >= 4 && t <= 131072 && (t % 4) == 0) {
+            if (t <= 36) { return launch_q4_simt_r8_c4; }
+            if (t <= 320) { return launch_q4_mma_r64_c64; }
+            return launch_q4_mma_r64_c128;
         }
         break;
     default:

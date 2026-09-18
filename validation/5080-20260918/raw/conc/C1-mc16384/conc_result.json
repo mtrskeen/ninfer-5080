@@ -1,0 +1,44 @@
+[
+ {
+  "concurrency": 1,
+  "kv_capacity": 16384,
+  "max_context": 16384,
+  "max_new": 2048,
+  "fixture": "decode_prose",
+  "makespan_seconds": 20.184767585946247,
+  "per_request": [
+   {
+    "prompt_tokens": 91,
+    "computed_prefill_tokens": 91,
+    "completion_tokens": 1900,
+    "finish_reason": "stop_token",
+    "prefix_cache_hit_tokens": 0,
+    "prepare_seconds": 0.000782802,
+    "vision_seconds": 0.0,
+    "prefill_seconds": 0.19715725199999998,
+    "decode_seconds": 19.980978867999994,
+    "total_seconds": 20.183736937,
+    "ttft_seconds": 0.19797878,
+    "prefill_tok_s": 461.5605009548419,
+    "server_ttft_ms": 197.94005399999998,
+    "decode_tok_s": 95.04038878902439,
+    "spec_backend": "mtp",
+    "spec_draft_window": 3,
+    "spec_rounds": 744,
+    "spec_drafted": 2232,
+    "spec_accepted": 1158,
+    "spec_acceptance": 0.5188172043010753,
+    "spec_tokens_per_round": 2.556451612903226,
+    "spec_fallback_steps": 0,
+    "accepted_per_position": [
+     564,
+     382,
+     212
+    ]
+   }
+  ],
+  "aggregate_decode_tok_s": 94.08084546498266,
+  "aggregate_acceptance": 0.5188172043010753,
+  "vram_peak_mib": 13966
+ }
+]

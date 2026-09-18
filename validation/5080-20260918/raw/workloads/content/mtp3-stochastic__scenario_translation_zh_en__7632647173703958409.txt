@@ -1,0 +1,60 @@
+**Part 1: Operational Boundaries**
+
+The system serves only one active request at a time, with all model state exclusively owned by a single execution thread. This limitation is not a transient defect but a deliberate product decision for single-GPU local inference. It allows the memory planner to pre-determine workspace, cache, and graph execution addresses, and makes state transitions for cancellation, failure, and recovery easier to verify.
+
+**Part 2: Prefill**
+
+Input first undergoes template rendering and tokenization, then enters the model in fixed-size blocks. Each block reads previously committed state and atomically advances the frontier. Timing must distinguish between host preparation, visual preprocessing, text prefill, and the first output token; file reading or model loading must not be mixed into throughput metrics.
+
+**Part 3: Decoding**
+
+Standard decoding commits one token per step, while speculative decoding can verify multiple candidates and commit a contiguous prefix. Regardless of how many candidates are accepted, public outputs, KV caches, loop states, and counters must correspond to the same committed position; no partially updated state may remain.
+
+**Part 4: Long Context**
+
+As context grows, latency is jointly determined by fixed-weight reads and the continuously growing attention cache reads. Reports should provide absolute speed, relative retention rate, and actual prompt token count, and record cache format, maximum capacity, sampler, and graph execution status.
+
+**Part 5: Reproducibility**
+
+Stable inputs must be saved as the exact message files sent, with source and token counts recorded. Formal runs must not involve ad-hoc web downloads, random question selection, or removal of slower samples. Every number must be traceable back to a specific model, command, input, and service log.
+
+**Part 6: Result Interpretation**
+
+A single isolated fastest run cannot prove stable performance, nor can a single high-acceptance-rate text represent all output scenarios. Code, narrative, translation, and structured content have different token distributions and should be presented separately rather than merged into a meaningless overall average.
+
+***
+
+### Chinese-English Glossary
+
+| # | Chinese Term | English Translation |
+|---|-------------|---------------------|
+| 1 | 运行边界 | Operational boundaries |
+| 2 | 活动请求 | Active request |
+| 3 | 模型状态 | Model state |
+| 4 | 执行程序 | Execution thread / program |
+| 5 | 单卡本地推理 | Single-GPU local inference |
+| 6 | 内存规划器 | Memory planner |
+| 7 | 工作区 | Workspace |
+| 8 | 图执行地址 | Graph execution address |
+| 9 | 状态转换 | State transition |
+| 10 | 预填充 | Prefill |
+| 11 | 模板渲染 | Template rendering |
+| 12 | 分词 | Tokenization |
+| 13 | 固定大小的块 | Fixed-size blocks |
+| 14 | 原子地推进前沿 | Atomically advance the frontier |
+| 15 | 主机准备 | Host preparation |
+| 16 | 视觉预处理 | Visual preprocessing |
+| 17 | 第一枚输出 token | First output token |
+| 18 | 解码 | Decoding |
+| 19 | 推测解码 | Speculative decoding |
+| 20 | 候选 | Candidates |
+| 21 | 连续前缀 | Contiguous prefix |
+| 22 | KV 缓存 | KV cache |
+| 23 | 循环状态 | Loop state |
+| 24 | 已提交位置 | Committed position |
+| 25 | 长上下文 | Long context |
+| 26 | 注意力缓存 | Attention cache |
+| 27 | 相对保留率 | Relative retention rate |
+| 28 | Prompt token 数 | Prompt token count |
+| 29 | 采样器 | Sampler |
+| 30 | 可复现性 | Reproducibility |

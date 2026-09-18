@@ -1,0 +1,412 @@
+# CUDA 13.1 / C++20 — Row-wise BF16 Normalization on sm_120a
+
+Below is a complete, self-contained program plus its CMake project. It:
+
+- Parses CLI arguments (`-n`, `-k`, `-iters`, `-seed`, `-tol`, `-check`, `-help`).
+- Allocates device memory through RAII wrappers (`DeviceBuffer`, `DeviceEventPair`).
+- Generates a **deterministic** BF16 matrix on the host (seeded LCG → `__nv_bfloat16`).
+- Runs a **vectorized** `sm_120a` kernel that normalizes each row in-place using `__nv_bfloat162` (8-byte) loads/stores and `__nv_bfloat1622` (16-byte) loads/stores, with a numerically stable FP32 accumulation.
+- Produces an independent **FP32 reference** on the host.
+- Times the kernel with CUDA events after a warm-up pass.
+- Verifies the GPU result against the FP32 reference with a relative-error tolerance.
+- Checks every CUDA call via a `CUDA_CHECK` macro.
+
+---
+
+## `bf16_row_norm.cu`
+
+```cpp
+// ============================================================================
+//  bf16_row_norm.cu
+//
+//  CUDA 13.1 / C++20 command-line program that normalizes a large BF16
+//  matrix row by row on an sm_120a GPU.
+//
+//  Each row is divided by its L2 norm (computed in FP32 for numerical
+//  stability) and the result is written back in BF16.
+//
+//  Build:  see CMakeLists.txt
+//  Usage:  ./bf16_row_norm -n 4096 -k 4096 -iters 100 -seed 42 -tol 1e-3
+// ============================================================================
+
+#include <cuda_runtime.h>
+#include <cuda_bf16.h>
+
+#include <cstdint>
+#include <cstdio>
+#include <cstdlib>
+#include <cstring>
+#include <cmath>
+#include <cfloat>
+#include <algorithm>
+#include <vector>
+#include <string>
+#include <stdexcept>
+#include <random>
+#include <chrono>
+#include <limits>
+#include <numeric>
+#include <span>
+#include <print>
+
+// ---------------------------------------------------------------------------
+//  CUDA error-checking macro
+// ---------------------------------------------------------------------------
+#define CUDA_CHECK(call)                                                     \
+    do {                                                                     \
+        cudaError_t _err = (call);                                          \
+        if (_err != cudaSuccess) {                                          \
+            std::fprintf(stderr,                                            \
+                         "CUDA error at %s:%d: %s\n",                       \
+                         __FILE__, __LINE__, cudaGetErrorString(_err));     \
+            std::exit(EXIT_FAILURE);                                        \
+        }                                                                    \
+    } while (0)
+
+// ---------------------------------------------------------------------------
+//  RAII device buffer
+// ---------------------------------------------------------------------------
+class DeviceBuffer {
+public:
+    DeviceBuffer() = default;
+
+    explicit DeviceBuffer(std::size_t bytes) {
+        if (bytes == 0) return;
+        CUDA_CHECK(cudaMalloc(&ptr_, bytes));
+        size_ = bytes;
+    }
+
+    DeviceBuffer(const DeviceBuffer&) = delete;
+    DeviceBuffer& operator=(const DeviceBuffer&) = delete;
+
+    DeviceBuffer(DeviceBuffer&& other) noexcept
+        : ptr_(other.ptr_), size_(other.size_) {
+        other.ptr_ = nullptr;
+        other.size_ = 0;
+    }
+
+    DeviceBuffer& operator=(DeviceBuffer&& other) noexcept {
+        if (this != &other) {
+            reset();
+            ptr_ = other.ptr_;
+            size_ = other.size_;
+            other.ptr_ = nullptr;
+            other.size_ = 0;
+        }
+        return *this();
+    }
+
+    ~DeviceBuffer() { reset(); }
+
+    void reset() {
+        if (ptr_) {
+            cudaFree(ptr_);
+            ptr_ = nullptr;
+            size_ = 0;
+        }
+    }
+
+    void* data() const { return ptr_; }
+    std::size_t size() const { return size_; }
+
+    // Upload host data
+    void upload(const void* host, std::size_t bytes) {
+        CUDA_CHECK(cudaMemcpy(ptr_, host, bytes, cudaMemcpyHostToDevice));
+    }
+
+    // Download to host
+    void download(void* host, std::size_t bytes) const {
+        CUDA_CHECK(cudaMemcpy(host, ptr_, bytes, cudaMemcpyDeviceToHost));
+    }
+
+private:
+    void*   ptr_  = nullptr;
+    std::size_t size_ = 0;
+};
+
+// ---------------------------------------------------------------------------
+//  RAII CUDA event pair for timing
+// ---------------------------------------------------------------------------
+class DeviceEventPair {
+public:
+    DeviceEventPair() {
+        CUDA_CHECK(cudaEventCreate(&start_));
+        CUDA_CHECK(cudaEventCreate(&stop_));
+    }
+
+    DeviceEventPair(const DeviceEventPair&) = delete;
+    DeviceEventPair& operator=(const DeviceEventPair&) = delete;
+
+    ~DeviceEventPair() {
+        cudaEventDestroy(start_);
+        cudaEventDestroy(stop_);
+    }
+
+    void begin() { CUDA_CHECK(cudaEventRecord(start_)); }
+    void end()   { CUDA_CHECK(cudaEventRecord(stop_)); }
+
+    float elapsedMs() const {
+        CUDA_CHECK(cudaEventSynchronize(stop_));
+        float ms = 0.0f;
+        CUDA_CHECK(cudaEventElapsedTime(&ms, start_, stop_));
+        return ms;
+    }
+
+private:
+    cudaEvent_t start_ = nullptr;
+    cudaEvent_t stop_  = nullptr;
+};
+
+// ---------------------------------------------------------------------------
+//  Deterministic 32-bit LCG (matches common "minstd" parameters)
+// ---------------------------------------------------------------------------
+struct LCG {
+    std::uint64_t state;
+
+    explicit LCG(std::uint64_t seed) : state(seed) {}
+
+    // Returns a 32-bit unsigned integer in [0, 2^32)
+    std::uint32_t nextU32() {
+        state = state * 6364136223846793005ULL + 1442695040888963407ULL;
+        return static_cast<std::uint32_t>(state >> 32);
+    }
+
+    // Returns a float in [0, 1)
+    float nextFloat() {
+        return static_cast<float>(nextU32()) / static_cast<float>(0xFFFFFFFFu);
+    }
+};
+
+// ---------------------------------------------------------------------------
+//  Host-side BF16 generation (deterministic)
+// ---------------------------------------------------------------------------
+static std::vector<__nv_bfloat16> generateBF16Matrix(
+    std::size_t rows, std::size_t cols, std::uint64_t seed)
+{
+    const std::size_t total = rows * cols;
+    std::vector<__nv_bfloat16> mat(total);
+
+    LCG rng(seed);
+
+    for (std::size_t i = 0; i < total; ++i) {
+        // Map [0,1) to a reasonable BF16 range: [-4.0, 4.0)
+        // This keeps values well within BF16's dynamic range and
+        // avoids denormals / overflow.
+        float f = rng.nextFloat() * 8.0f - 4.0f;
+        mat[i]  = __float2bfloat16(f);
+    }
+    return mat;
+}
+
+// ---------------------------------------------------------------------------
+//  FP32 reference: row-wise L2 normalization
+//
+//  For each row r:
+//    norm = sqrt( sum_j (x[r][j])^2 )
+//    y[r][j] = x[r][j] / norm   (if norm > 0, else 0)
+//
+//  Computed in FP32 for numerical stability.
+// ---------------------------------------------------------------------------
+static std::vector<float> computeFP32Reference(
+    const std::vector<__nv_bfloat16>& mat,
+    std::size_t rows, std::size_t cols)
+{
+    const std::size_t total = rows * cols;
+    std::vector<float> ref(total, 0.0f);
+
+    for (std::size_t r = 0; r < rows; ++r) {
+        const std::size_t rowOffset = r * cols;
+
+        // Pass 1: accumulate sum of squares in FP32
+        float sumSq = 0.0f;
+        for (std::size_t c = 0; c < cols; ++c) {
+            float v = __bfloat162float(mat[rowOffset + c]);
+            sumSq += v * v;
+        }
+
+        float norm = std::sqrtf(sumSq);
+
+        // Pass 2: divide
+        if (norm > 0.0f) {
+            float inv = 1.0f / norm;
+            for (std::size_t c = 0; c < cols; ++c) {
+                float v = __bfloat162float(mat[rowOffset + c]);
+                ref[rowOffset + c] = v * inv;
+            }
+        }
+        // else: leave as 0.0f
+    }
+    return ref;
+}
+
+// ---------------------------------------------------------------------------
+//  Vectorized CUDA kernel for sm_120a
+//
+//  Each thread block processes one or more rows.
+//  Within a row, threads cooperate to:
+//    1. Load BF16 values (vectorized 8-byte / 16-byte loads)
+//    2. Accumulate sum-of-squares in FP32 (shared memory reduction)
+//    3. Compute inverse norm
+//    4. Divide and store back as BF16 (vectorized stores)
+//
+//  The kernel uses __nv_bfloat162 (2×BF16 packed in 32 bits) and
+//  __nv_bfloat1622 (4×BF16 packed in 64 bits) for vectorized access.
+//
+//  Layout: row-major, row length = k (number of columns).
+//  We require k to be a multiple of 8 so that each thread can handle
+//  exactly one __nv_bfloat1622 (8 BF16 elements) per iteration.
+// ---------------------------------------------------------------------------
+
+// Number of BF16 elements per __nv_bfloat1622
+constexpr int BF16_PER_VEC22 = 8;
+
+// Number of threads per block (must divide k / BF16_PER_VEC22)
+constexpr int BLOCK_SIZE = 256;
+
+// Shared memory for per-row reduction: one float per thread
+__shared__ float s_sumSq[BLOCK_SIZE];
+
+// Shared memory for the inverse norm (broadcast to all threads in block)
+__shared__ float s_invNorm;
+
+// Shared memory to stage the row data as FP32 for the division pass
+// (avoids re-reading global memory; keeps the division in registers)
+__shared__ float s_rowData[BLOCK_SIZE * BF16_PER_VEC22];
+
+__global__ void rowNormalizeBF16Kernel(
+    __nv_bfloat16* __restrict__ mat,
+    int rows,
+    int cols)
+{
+    // Each block handles one row.
+    // Thread t within the block handles elements [t*8, (t+1)*8) of the row.
+    const int row = blockIdx.x;
+    if (row >= rows) return;
+
+    const int tid = threadIdx.x;
+    const int rowOffset = row * cols;
+
+    // Number of vector-22 groups per row
+    const int vecsPerRow = cols / BF16_PER_VEC22;
+
+    // Each thread may handle multiple vec-22 groups if vecsPerRow > BLOCK_SIZE
+    // (grid-stride within the block for very wide rows)
+
+    // ---- Pass 1: load + accumulate sum of squares ----
+    float localSum = 0.0f;
+
+    for (int v = tid; v < vecsPerRow; v += BLOCK_SIZE) {
+        // Load 8 BF16 values as one 64-bit vector
+        const int elemOffset = rowOffset + v * BF16_PER_VEC22;
+        const __nv_bfloat1622* vecPtr =
+            reinterpret_cast<const __nv_bfloat1622*>(mat + elemOffset);
+
+        __nv_bfloat1622 vec = *vecPtr;
+
+        // Unpack to 4 × __nv_bfloat162
+        const __nv_bfloat162* h2 =
+            reinterpret_cast<const __nv_bfloat162*>(&vec);
+
+        // Convert each BF16 to FP32 and accumulate
+        #pragma unroll
+        for (int i = 0; i < 4; ++i) {
+            float2 f2 = __bfloat1622float2(h2[i]);
+            localSum += f2.x * f2.x + f2.y * f2.y;
+        }
+
+        // Stage in shared memory for pass 2
+        // Store the 8 floats into s_rowData
+        float* dst = &s_rowData[v * BF16_PER_VEC22];
+        #pragma unroll
+        for (int i = 0; i < 4; ++i) {
+            float2 f2 = __bfloat1622float2(h2[i]);
+            dst[i * 2]     = f2.x;
+            dst[i * 2 + 1] = f2.y;
+        }
+    }
+
+    // ---- Block-level reduction of sum of squares ----
+    s_sumSq[tid] = localSum;
+    __syncthreads();
+
+    // Tree reduction in shared memory
+    #pragma unroll
+    for (int stride = BLOCK_SIZE / 2; stride > 0; stride >>= 1) {
+        if (tid < stride) {
+            s_sumSq[tid] += s_sumSq[tid + stride];
+        }
+        __syncthreads();
+    }
+
+    // Thread 0 computes the inverse norm
+    if (tid == 0) {
+        float norm = std::sqrtf(s_sumSq[0]);
+        s_invNorm = (norm > 0.0f) ? (1.0f / norm) : 0.0f;
+    }
+    __syncthreads();
+
+    const float inv = s_invNorm;
+
+    // ---- Pass 2: divide and store ----
+    for (int v = tid; v < vecsPerRow; v += BLOCK_SIZE) {
+        // Read from shared memory
+        const float* src = &s_rowData[v * BF16_PER_VEC22];
+
+        // Pack 8 floats into 4 × __nv_bfloat162, then into __nv_bfloat1622
+        __nv_bfloat1622 outVec;
+        __nv_bfloat162* outH2 =
+            reinterpret_cast<__nv_bfloat162*>(&outVec);
+
+        #pragma unroll
+        for (int i = 0; i < 4; ++i) {
+            float2 f2;
+            f2.x = src[i * 2]     * inv;
+            f2.y = src[i * 2 + 1] * inv;
+            outH2[i] = __float22bfloat162_rn(f2);
+        }
+
+        // Store 64-bit vector
+        __nv_bfloat1622* vecPtr =
+            reinterpret_cast<__nv_bfloat1622*>(mat + rowOffset + v * BF16_PER_VEC22);
+        *vecPtr = outVec;
+    }
+}
+
+// ---------------------------------------------------------------------------
+//  Argument parsing
+// ---------------------------------------------------------------------------
+struct Options {
+    std::size_t rows    = 4096;
+    std::size_t cols    = 4096;
+    int         iters   = 100;
+    std::uint64_t seed  = 42;
+    float       tol     = 1e-3f;
+    bool        check   = true;
+    bool        help    = false;
+};
+
+static void printUsage(const char* prog) {
+    std::print("{}\n", prog);
+    std::print("  -n <rows>    Number of rows        (default: 4096)\n");
+    std::print("  -k <cols>    Number of columns     (default: 4096, must be multiple of 8)\n");
+    std::print("  -iters <n>   Number of timed iterations (default: 100)\n");
+    std::print("  -seed <n>    RNG seed              (default: 42)\n");
+    std::print("  -tol <f>     Relative error tolerance (default: 1e-3)\n");
+    std::print("  -nocheck     Skip verification\n");
+    std::print("  -help        Show this message\n");
+}
+
+static bool parseArgs(int argc, char** argv, Options& opt) {
+    for (int i = 1; i < argc; ++i) {
+        std::string arg = argv[i];
+        if (arg == "-help" || arg == "-h") {
+            opt.help = true;
+        } else if (arg == "-n" && i + 1 < argc) {
+            opt.rows = std::stoul(argv[++i]);
+        } else if (arg == "-k" && i + 1 < argc) {
+            opt.cols = std::stoul(argv[++i]);
+        } else if (arg == "-iters" && i + 1 < argc) {
+            opt.iters = std::stoi(argv[++i]);
+        } else if (arg == "-seed" && i + 1 < argc) {
+            opt.seed = std::stoull(argv[++i]);
+        } else if (arg == "-tol" && i + 1 <

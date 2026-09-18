@@ -1,0 +1,441 @@
+# `metrics-service` — NDJSON request‑metrics ingestion & aggregation
+
+Below is a complete, runnable TypeScript 5 project. It uses **only** the Node standard library (no third‑party schema or HTTP libraries), so it runs on any modern Node install (`npm install && npm test`, then `npm start`).
+
+```
+metrics-service/
+├── package.json
+├── tsconfig.json
+├── README.md                 # operational guide
+└── src/
+    ├── types.ts              # strict domain types + error taxonomy
+    ├── parser.ts             # incremental NDJSON parser (bounded memory)
+    ├── validator.ts          # hand-rolled validation (no schema libs)
+    ├── store.ts              # bounded in-memory store + aggregation math
+    ├── server.ts             # /health, /summary, /runs/:id HTTP API
+    └── index.ts              # bootstrap (stdin pipe OR standalone)
+    └── __tests__/
+        ├── parser.test.ts
+        ├── validator.test.ts
+        └── store.test.ts
+```
+
+---
+
+## `package.json`
+
+```json
+{
+  "name": "metrics-service",
+  "version": "1.0.0",
+  "description": "NDJSON request-metrics ingestion, validation, and aggregation service",
+  "type": "module",
+  "engines": { "node": ">=18" },
+  "scripts": {
+    "build": "tsc -p tsconfig.json",
+    "start": "node dist/index.js",
+    "dev": "tsx src/index.ts",
+    "test": "vitest run",
+    "test:watch": "vitest",
+    "typecheck": "tsc -p tsconfig.json --noEmit"
+  },
+  "dependencies": {},
+  "devDependencies": {
+    "@types/node": "^22.0.0",
+    "tsx": "^4.19.0",
+    "typescript": "^5.6.0",
+    "vitest": "^2.1.0"
+  }
+}
+```
+
+> Zero runtime dependencies. The only dev tools are the TS compiler, a TS runner, and Vitest for tests.
+
+---
+
+## `tsconfig.json`
+
+```jsonc
+{
+  "compilerOptions": {
+    "target": "ES2022",
+    "module": "NodeNext",
+    "moduleResolution": "NodeNext",
+    "lib": ["ES2022"],
+    "outDir": "./dist",
+    "rootDir": "./src",
+    "strict": true,               // full strict mode
+    "noUncheckedIndexedAccess": true,
+    "exactOptionalPropertyTypes": true,
+    "noImplicitOverride": true,
+    "noFallthroughCasesInSwitch": true,
+    "forceConsistentCasingInFileNames": true,
+    "esModuleInterop": true,
+    "skipLibCheck": true,
+    "declaration": true,
+    "sourceMap": true,
+    "resolveJsonModule": true,
+    "isolatedModules": true
+  },
+  "include": ["src/**/*"],
+  "exclude": ["node_modules", "dist"]
+}
+```
+
+---
+
+## `src/types.ts`
+
+Strict domain types plus a closed error taxonomy so callers can branch deterministically.
+
+```ts
+/**
+ * Domain types for the metrics service.
+ *
+ * A "record" is one line of the NDJSON stream describing a single model run.
+ * Records are grouped by (model, fixture) to produce aggregate statistics.
+ */
+
+/** Discriminant for every error the service can emit. */
+export type ErrorCode =
+  | 'MALFORMED_JSON'      // line did not parse as JSON
+  | 'INVALID_TYPE'       // field present but wrong JS type
+  | 'MISSING_FIELD'      // required field absent
+  | 'UNKNOWN_FIELD'      // strict-mode: unexpected key
+  | 'OUT_OF_RANGE'       // numeric value outside allowed bounds
+  | 'BAD_ENUM'           // enum field has an invalid value
+  | 'EMPTY_RECORD'      // record object with no fields
+  | 'STORE_FULL';        // bounded store rejected the record
+
+/** Structured, serializable error. Never throws a bare string. */
+export interface ServiceError {
+  readonly code: ErrorCode;
+  readonly message: string;
+  /** Optional context (field name, expected vs actual, etc.) */
+  readonly detail?: Record<string, unknown>;
+}
+
+/** Thrown internally; serialized into HTTP responses via `toHttp()`. */
+export class MetricsError extends Error implements ServiceError {
+  readonly code: ErrorCode;
+  readonly detail?: Record<string, unknown>;
+
+  constructor(code: ErrorCode, message: string, detail?: Record<string, unknown>) {
+    super(message);
+    this.name = 'MetricsError';
+    this.code = code;
+    this.detail = detail;
+  }
+
+  toServiceError(): ServiceError {
+    return { code: this.code, message: this.message, ...(this.detail ? { detail: this.detail } : {}) };
+  }
+}
+
+/** One parsed+validated record from the stream. */
+export interface RequestMetricRecord {
+  /** Stable id for the run, e.g. "run-0001". Used by /runs/:id */
+  readonly id: string;
+  /** Model identifier, e.g. "gpt-4o-mini". Grouping key #1. */
+  readonly model: string;
+  /** Fixture/test-case identifier, e.g. "arithmetic-basic". Grouping key #2. */
+  readonly fixture: string;
+  /** Wall-clock duration in milliseconds. */
+  readonly latencyMs: number;
+  /** HTTP status returned by the endpoint under test. */
+  readonly status: number;
+  /** ISO-8601 timestamp of when the record was produced. */
+  readonly timestamp: string;
+  /** Free-form tags for ad-hoc slicing (kept small). */
+  readonly tags: readonly string[];
+}
+
+/** Aggregated stats for a single (model, fixture) group. */
+export interface GroupStats {
+  readonly model: string;
+  readonly fixture: string;
+  readonly count: number;
+  readonly meanLatencyMs: number;
+  readonly medianLatencyMs: number;
+  readonly sampleStdDevMs: number;   // n-1 denominator; NaN-safe -> null when n<2
+  readonly minLatencyMs: number;
+  readonly maxLatencyMs: number;
+  readonly successCount: number;    // status in [200,300)
+  readonly failureCount: number;    // everything else
+  readonly firstSeen: string;
+  readonly lastSeen: string;
+}
+
+/** Top-level /summary response shape. */
+export interface SummaryResponse {
+  readonly generatedAt: string;
+  readonly totalRecords: number;
+  readonly droppedMalformed: number;
+  readonly groups: readonly GroupStats[];
+}
+
+/** /runs/:id response shape. */
+export interface RunDetailResponse {
+  readonly id: string;
+  readonly record: RequestMetricRecord;
+  readonly group: GroupStats;
+}
+
+/** Bounded-store configuration knobs. */
+export interface StoreConfig {
+  /** Max distinct (model,fixture) groups retained. */
+  readonly maxGroups: number;
+  /** Max raw records retained per group before oldest are evicted. */
+  readonly maxSamplesPerGroup: number;
+  /** Max malformed lines we remember (for /health diagnostics). */
+  readonly maxMalformedLog: number;
+}
+
+/** Default store sizing. All values are hard caps => bounded memory. */
+export const DEFAULT_STORE_CONFIG: Readonly<StoreConfig> = Object.freeze({
+  maxGroups: 10_000,
+  maxSamplesPerGroup: 1_024,
+  maxMalformedLog: 512,
+});
+```
+
+---
+
+## `src/parser.ts`
+
+Incremental, streaming NDJSON parser. It buffers partial lines across chunk boundaries, never holds more than one in-flight line, and yields either a parsed object or a typed error. This is what makes memory bounded regardless of input size.
+
+```ts
+import { MetricsError, type ErrorCode } from './types.js';
+
+export type ParseResult =
+  | { ok: true; value: unknown }
+  | { ok: false; error: { code: ErrorCode; message: string; lineIndex: number } };
+
+/**
+ * Incremental newline-delimited JSON parser.
+ *
+ * Feed arbitrary chunks via `write(chunk)`; completed lines are emitted through
+ * the `onLine` callback exactly once. Partial lines are buffered until their
+ * terminating `\n` arrives, so memory usage is O(longest-line) rather than
+ * O(total-input). Blank lines are skipped. Each non-blank line is JSON.parsed
+ * independently; a failure produces a typed MALFORMED_JSON result instead of
+ * throwing, so a single bad line cannot poison the stream.
+ */
+export class NdjsonParser {
+  private buffer = '';
+  private lineIndex = 0;
+
+  constructor(
+    private readonly onLine: (result: ParseResult) => void,
+    private readonly maxLineBytes = 1 << 20, // 1 MiB guard against runaway lines
+  ) {}
+
+  /** Feed a chunk of UTF-8 text. May emit zero or more line results. */
+  write(chunk: string): void {
+    if (chunk.length > this.maxLineBytes) {
+      // Defensive: refuse absurdly large chunks that would blow the buffer.
+      this.flushBufferedLine();
+      this.onLine({
+        ok: false,
+        error: {
+          code: 'MALFORMED_JSON',
+          message: `line exceeds maxLineBytes (${this.maxLineBytes})`,
+          lineIndex: this.lineIndex,
+        },
+      });
+      this.lineIndex += 1;
+      return;
+    }
+
+    this.buffer += chunk;
+
+    let nl = this.buffer.indexOf('\n');
+    while (nl !== -1) {
+      const line = this.buffer.slice(0, nl);
+      this.buffer = this.buffer.slice(nl + 1);
+      this.emitLine(line);
+      nl = this.buffer.indexOf('\n');
+    }
+  }
+
+  /** Flush any trailing partial line (call at end-of-stream). */
+  end(): void {
+    if (this.buffer.length > 0) {
+      this.emitLine(this.buffer);
+      this.buffer = '';
+    }
+  }
+
+  private emitLine(rawLine: string): void {
+    const trimmed = rawLine.trim();
+    this.lineIndex += 1;
+    if (trimmed === '') return; // skip blank lines silently
+
+    try {
+      const value: unknown = JSON.parse(trimmed);
+      this.onLine({ ok: true, value });
+    } catch (err) {
+      const msg = err instanceof Error ? err.message : String(err);
+      this.onLine({
+        ok: false,
+        error: { code: 'MALFORMED_JSON', message: msg, lineIndex: this.lineIndex },
+      });
+    }
+  }
+
+  private flushBufferedLine(): void {
+    if (this.buffer.length > 0) {
+      this.emitLine(this.buffer);
+      this.buffer = '';
+    }
+  }
+}
+```
+
+---
+
+## `src/validator.ts`
+
+Hand-rolled, dependency-free validation. Enforces presence, exact types, ranges, enums, and (in strict mode) rejects unknown keys. Returns a validated record or a structured `ServiceError`.
+
+```ts
+import {
+  MetricsError,
+  type RequestMetricRecord,
+  type ServiceError,
+} from './types.js';
+
+export interface ValidatorOptions {
+  /** When true, any key not in the known set is rejected (default true). */
+  readonly strictUnknownFields: boolean;
+  /** Allowed HTTP status codes (default: 100..599). */
+  readonly allowedStatuses: readonly number[];
+  /** Max tags per record (bounds memory on the tags array). */
+  readonly maxTags: number;
+  /** Max length for string id/model/fixture fields. */
+  readonly maxStringLength: number;
+  /** Latency bounds in ms. */
+  readonly latencyMinMs: number;
+  readonly latencyMaxMs: number;
+}
+
+export const DEFAULT_VALIDATOR_OPTIONS: Readonly<ValidatorOptions> = Object.freeze({
+  strictUnknownFields: true,
+  allowedStatuses: range(100, 599),
+  maxTags: 16,
+  maxStringLength: 128,
+  latencyMinMs: 0,
+  latencyMaxMs: 3_600_000, // 1 hour
+});
+
+function range(from: number, to: number): number[] {
+  const out: number[] = [];
+  for (let i = from; i <= to; i++) out.push(i);
+  return out;
+}
+
+const KNOWN_FIELDS = new Set(['id', 'model', 'fixture', 'latencyMs', 'status', 'timestamp', 'tags']);
+
+function isPlainObject(v: unknown): v is Record<string, unknown> {
+  return typeof v === 'object' && v !== null && !Array.isArray(v);
+}
+
+function isFiniteNumber(v: unknown): v is number {
+  return typeof v === 'number' && Number.isFinite(v);
+}
+
+/** Validate a raw parsed JSON value into a strict RequestMetricRecord. */
+export function validateRecord(
+  raw: unknown,
+  opts: Readonly<ValidatorOptions> = DEFAULT_VALIDATOR_OPTIONS,
+): RequestMetricRecord {
+  if (!isPlainObject(raw)) {
+    throw new MetricsError('INVALID_TYPE', 'record must be a JSON object', { got: typeName(raw) });
+  }
+
+  const keys = Object.keys(raw);
+  if (keys.length === 0) {
+    throw new MetricsError('EMPTY_RECORD', 'record object has no fields');
+  }
+
+  if (opts.strictUnknownFields) {
+    for (const k of keys) {
+      if (!KNOWN_FIELDS.has(k)) {
+        throw new MetricsError('UNKNOWN_FIELD', `unexpected field "${k}"`, { field: k });
+      }
+    }
+  }
+
+  const id = requireString(raw, 'id', opts);
+  const model = requireString(raw, 'model', opts);
+  const fixture = requireString(raw, 'fixture', opts);
+  const latencyMs = requireNumberInRange(raw, 'latencyMs', opts.latencyMinMs, opts.latencyMaxMs, opts);
+  const status = requireStatus(raw, opts);
+  const timestamp = requireIsoTimestamp(raw, opts);
+  const tags = requireTags(raw, opts);
+
+  return { id, model, fixture, latencyMs, status, timestamp, tags };
+}
+
+function typeName(v: unknown): string {
+  if (v === null) return 'null';
+  if (Array.isArray(v)) return 'array';
+  return typeof v;
+}
+
+function requireString(
+  raw: Record<string, unknown>,
+  field: string,
+  opts: Readonly<ValidatorOptions>,
+): string {
+  const v = raw[field];
+  if (v === undefined) throw new MetricsError('MISSING_FIELD', `missing required field "${field}"`, { field });
+  if (typeof v !== 'string') throw new MetricsError('INVALID_TYPE', `"${field}" must be a string`, { field, got: typeName(v) });
+  if (v.length === 0) throw new MetricsError('OUT_OF_RANGE', `"${field}" must be non-empty`, { field });
+  if (v.length > opts.maxStringLength) {
+    throw new MetricsError('OUT_OF_RANGE', `"${field}" exceeds max length ${opts.maxStringLength}`, { field, len: v.length });
+  }
+  return v;
+}
+
+function requireNumberInRange(
+  raw: Record<string, unknown>,
+  field: string,
+  min: number,
+  max: number,
+  opts: Readonly<ValidatorOptions>,
+): number {
+  const v = raw[field];
+  if (v === undefined) throw new MetricsError('MISSING_FIELD', `missing required field "${field}"`, { field });
+  if (!isFiniteNumber(v)) throw new MetricsError('INVALID_TYPE', `"${field}" must be a finite number`, { field, got: typeName(v) });
+  if (v < min || v > max) {
+    throw new MetricsError('OUT_OF_RANGE', `"${field}" out of range [${min}, ${max}]`, { field, value: v, min, max });
+  }
+  return v;
+}
+
+function requireStatus(raw: Record<string, unknown>, opts: Readonly<ValidatorOptions>): number {
+  const v = raw['status'];
+  if (v === undefined) throw new MetricsError('MISSING_FIELD', 'missing required field "status"', { field: 'status' });
+  if (!isFiniteNumber(v)) throw new MetricsError('INVALID_TYPE', '"status" must be a number', { field: 'status', got: typeName(v) });
+  if (!Number.isInteger(v)) throw new MetricsError('INVALID_TYPE', '"status" must be an integer', { field: 'status', value: v });
+  if (!opts.allowedStatuses.includes(v)) {
+    throw new MetricsError('BAD_ENUM', `"status" ${v} not in allowed set`, { field: 'status', value: v });
+  }
+  return v;
+}
+
+function requireIsoTimestamp(raw: Record<string, unknown>, opts: Readonly<ValidatorOptions>): string {
+  const v = raw['timestamp'];
+  if (v === undefined) throw new MetricsError('MISSING_FIELD', 'missing required field "timestamp"', { field: 'timestamp' });
+  if (typeof v !== 'string') throw new MetricsError('INVALID_TYPE', '"timestamp" must be a string', { field: 'timestamp', got: typeName(v) });
+  if (v.length > opts.maxStringLength) {
+    throw new MetricsError('OUT_OF_RANGE', '"timestamp" too long', { field: 'timestamp', len: v.length });
+  }
+  const t = Date.parse(v);
+  if (Number.isNaN(t)) throw new MetricsError('INVALID_TYPE', '"timestamp" is not valid ISO-8601', { field: 'timestamp', value: v });
+  return v;
+}
+
+function requireTags(raw: Record<string, unknown>, opts

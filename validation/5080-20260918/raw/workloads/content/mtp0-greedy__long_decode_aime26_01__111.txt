@@ -1,0 +1,155 @@
+Let Patrick’s walking rate be \(p\) miles per hour.
+
+Then:
+
+- Tanya’s running rate is \(p+2\) miles per hour.
+- Jose’s bicycling rate is \((p+2)+7=p+9\) miles per hour.
+
+Let the distance from school to the park be \(d\) miles.
+
+Patrick’s travel time is
+
+\[
+\frac{d}{p}.
+\]
+
+Tanya left 1 hour after Patrick and arrived at the same time, so her travel time is
+
+\[
+\frac{d}{p+2}=\frac{d}{p}-1.
+\]
+
+Thus,
+
+\[
+\frac{d}{p}-\frac{d}{p+2}=1.
+\]
+
+Simplify:
+
+\[
+d\left(\frac{1}{p}-\frac{1}{p+2}\right)=1
+\]
+
+\[
+d\left(\frac{2}{p(p+2)}\right)=1
+\]
+
+\[
+d=\frac{p(p+2)}{2}.
+\]
+
+Jose left 1 hour after Tanya, so 2 hours after Patrick, and also arrived at the same time. Therefore,
+
+\[
+\frac{d}{p+9}=\frac{d}{p}-2.
+\]
+
+Thus,
+
+\[
+\frac{d}{p}-\frac{d}{p+9}=2.
+\]
+
+Simplify:
+
+\[
+d\left(\frac{1}{p}-\frac{1}{p+9}\right)=2
+\]
+
+\[
+d\left(\frac{9}{p(p+9)}\right)=2
+\]
+
+\[
+d=\frac{2p(p+9)}{9}.
+\]
+
+Now set the two expressions for \(d\) equal:
+
+\[
+\frac{p(p+2)}{2}=\frac{2p(p+9)}{9}.
+\]
+
+Since \(p>0\), divide by \(p\):
+
+\[
+\frac{p+2}{2}=\frac{2(p+9)}{9}.
+\]
+
+Cross-multiply:
+
+\[
+9(p+2)=4(p+9)
+\]
+
+\[
+9p+18=4p+36
+\]
+
+\[
+5p=18
+\]
+
+\[
+p=\frac{18}{5}.
+\]
+
+Now find the distance:
+
+\[
+d=\frac{p(p+2)}{2}
+\]
+
+\[
+d=\frac{\frac{18}{5}\left(\frac{18}{5}+2\right)}{2}
+\]
+
+\[
+d=\frac{\frac{18}{5}\cdot \frac{28}{5}}{2}
+\]
+
+\[
+d=\frac{504}{25}\cdot \frac{1}{2}
+\]
+
+\[
+d=\frac{252}{25}.
+\]
+
+So \(m=252\) and \(n=25\), which are relatively prime. Therefore,
+
+\[
+m+n=252+25=277.
+\]
+
+\[
+\boxed{277}
+\]
+<<<REASONING>>>
+We need solve math problem step by step. Need produce final with boxed answer. Let's analyze thoroughly.
+
+Problem: Patrick starts walking at constant rate from school to park. One hour after Patrick left, Tanya started running same road. One hour after Tanya left, Jose started bicycling. Tanya ran at constant rate 2 mph faster than Patrick walked. Jose bicycled at constant rate 7 mph faster than Tanya ran. All three arrived at park at same time. Distance = m/n miles, m,n coprime positive. Find m+n.
+
+Let Patrick's rate = p mph. Tanya rate = p+2. Jose rate = p+9 (since 7 faster than Tanya). Let distance = d.
+
+Let time Patrick takes = d/p. Tanya starts 1 hour after Patrick, arrives same time, so Tanya's travel time = d/(p+2) = d/p - 1. Jose starts 1 hour after Tanya, i.e. 2 hours after Patrick, arrives same time, so Jose's travel time = d/(p+9) = d/p - 2.
+
+Need solve for p,d positive. Equations:
+d/p - d/(p+2) = 1.
+d/p - d/(p+9) = 2.
+
+Let's solve. First: d [1/p - 1/(p+2)] = d * 2/[p(p+2)] = 1 => d = p(p+2)/2.
+Second: d [1/p - 1/(p+9)] = d * 9/[p(p+9)] = 2 => d = 2 p(p+9)/9.
+Equate: p(p+2)/2 = 2p(p+9)/9. p>0 cancel p: (p+2)/2 = 2(p+9)/9 => 9(p+2)=4(p+9) => 9p+18=4p+36 => 5p=18 => p=18/5 = 3.6 mph.
+Then d = p(p+2)/2 = (18/5)*(28/5)/2 = (504/25)/2? Wait 18*28=504, /25, /2 =252/25 = 10.08. Or second: 2*(18/5)*(27/5)/9 = 2*486/25 /9 = 972/25 /9 =108/25? That's 4.32, inconsistent? Let's recalc: p+9 = 18/5+9=18/5+45/5=63/5, not 27/5. I mistakenly. 2*p*(p+9)/9 = 2*(18/5)*(63/5)/9 = 2*1134/25 /9 =2268/25 /9 =252/25. Good.
+Distance = 252/25. m+n=277.
+
+Need ensure no hidden issue: Tanya rate 2 mph faster than Patrick, Jose 7 mph faster than Tanya. Yes.
+Check times: Patrick d/p = (252/25)/(18/5)=252/25*5/18= (252/18)*(1/5)=14/5=2.8 h. Tanya time = d/(p+2)=252/25 / (28/5)=252/25*5/28= (252/28)*(1/5)=9/5=1.8 h. Difference 1 h. Jose time = d/(p+9)=252/25 / (63/5)=252/25*5/63= (252/63)*(1/5)=4/5=0.8 h. Difference from Patrick 2 h. All good.
+
+Need final step-by-step, boxed. Could include definitions. Ensure answer inside \boxed{}.
+
+Need maybe mention m=252, n=25 relatively prime? gcd 252,25 =1. m+n=277.
+
+Need final concise but step by step.

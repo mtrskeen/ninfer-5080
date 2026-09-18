@@ -1,0 +1,492 @@
+diff --git a/src/artifact/binder.cpp b/src/artifact/binder.cpp
+index 27d7783a..424ef9fc 100644
+--- a/src/artifact/binder.cpp
++++ b/src/artifact/binder.cpp
+@@ -75,6 +75,14 @@ const ObjectDescriptor& Binder::descriptor(ObjectHandle handle) const {
+     return reader_.objects()[handle.index];
+ }
+ 
++const TensorDescriptor* Binder::find_tensor(std::string_view name) const noexcept {
++    const ObjectDescriptor* object = reader_.find(name);
++    if (object == nullptr) {
++        return nullptr;
++    }
++    return std::get_if<TensorDescriptor>(object);
++}
++
+ PayloadSpan Binder::payload(ObjectHandle handle) const {
+     return reader_.payload(descriptor(handle));
+ }
+diff --git a/src/artifact/binder.h b/src/artifact/binder.h
+index 4f317b24..c199a61b 100644
+--- a/src/artifact/binder.h
++++ b/src/artifact/binder.h
+@@ -49,6 +49,7 @@ public:
+     ObjectHandle require_resource(std::string_view name, ResourceEncoding encoding);
+ 
+     const ObjectDescriptor& descriptor(ObjectHandle handle) const;
++    const TensorDescriptor* find_tensor(std::string_view name) const noexcept;
+     PayloadSpan payload(ObjectHandle handle) const;
+     void materialize_on_device(ObjectHandle handle);
+     void retain_on_host(ObjectHandle handle);
+diff --git a/src/ops/linear/q4/q4_dispatch.cpp b/src/ops/linear/q4/q4_dispatch.cpp
+index 943e4c90..f49e222e 100644
+--- a/src/ops/linear/q4/q4_dispatch.cpp
++++ b/src/ops/linear/q4/q4_dispatch.cpp
+@@ -8,6 +8,30 @@ Q4Launch select_q4_a16_launch(std::int32_t n, std::int32_t k, std::int32_t t) {
+     if (t <= 0) { throw std::invalid_argument("q4 linear: unsupported shape or T"); }
+ 
+     switch (k) {
++    case 10240:
++        if (n == 5120) {
++            if (t == 1) { return launch_q4_gemv_r1_w8_k10240; }
++            if (t <= 4) { return launch_q4_simt_r8_c4; }
++            if (t <= 16) { return launch_q4_simt_r8_c8; }
++            return launch_q4_mma_r64_c128;
++        }
++        break;
++    case 6144:
++        if (n == 5120) {
++            if (t == 1) { return launch_q4_gemv_r1_w8_k6144; }
++            if (t <= 7) { return launch_q4_simt_r8_c4; }
++            if (t <= 16) { return launch_q4_simt_r8_c8; }
++            return launch_q4_mma_r64_c128;
++        }
++        break;
++    case 17408:
++        if (n == 5120) {
++            if (t == 1) { return launch_q4_gemv_r1_w8_k17408; }
++            if (t <= 4) { return launch_q4_simt_r8_c4; }
++            if (t <= 16) { return launch_q4_simt_r8_c8; }
++            return launch_q4_mma_r64_c128;
++        }
++        break;
+     case 5120:
+         switch (n) {
+         case 1024:
+@@ -32,6 +56,11 @@ Q4Launch select_q4_a16_launch(std::int32_t n, std::int32_t k, std::int32_t t) {
+             if (t <= 15) { return launch_q4_simt_r8_c4; }
+             if (t == 16) { return launch_q4_simt_r8_c8; }
+             return launch_q4_mma_r64_c128;
++        case 14336:
++            if (t == 1) { return launch_q4_gemv_r1_w8_direct; }
++            if (t <= 4) { return launch_q4_simt_r8_c4; }
++            if (t <= 16) { return launch_q4_simt_r8_c8; }
++            return launch_q4_mma_r64_c128;
+         case 34816:
+             if (t == 1) { return launch_q4_gemv_r1_w8_direct; }
+             if (t <= 4) { return launch_q4_simt_r8_c4; }
+@@ -75,6 +104,10 @@ Q4Launch select_q4_a16_launch(std::int32_t n, std::int32_t k, std::int32_t t) {
+     case 1152:
+         if (t < 4 || t > 131072 || (t % 4) != 0) { break; }
+         switch (n) {
++        case 1152:
++            if (t <= 36) { return launch_q4_simt_r8_c4; }
++            if (t <= 320) { return launch_q4_mma_r64_c64; }
++            return launch_q4_mma_r64_c128;
+         case 3456:
+             if (t <= 36) { return launch_q4_simt_r8_c4; }
+             if (t <= 320) { return launch_q4_mma_r64_c64; }
+@@ -90,6 +123,13 @@ Q4Launch select_q4_a16_launch(std::int32_t n, std::int32_t k, std::int32_t t) {
+             break;
+         }
+         break;
++    case 4304:
++        if (n == 1152 && t >= 4 && t <= 131072 && (t % 4) == 0) {
++            if (t <= 36) { return launch_q4_simt_r8_c4; }
++            if (t <= 320) { return launch_q4_mma_r64_c64; }
++            return launch_q4_mma_r64_c128;
++        }
++        break;
+     default:
+         break;
+     }
+diff --git a/src/ops/linear/q4/q4_launch.h b/src/ops/linear/q4/q4_launch.h
+index 501e4af8..e6834af2 100644
+--- a/src/ops/linear/q4/q4_launch.h
++++ b/src/ops/linear/q4/q4_launch.h
+@@ -15,6 +15,7 @@ void launch_q4_gemv_r1_w8_direct(const Tensor& x, const Weight& w, Tensor& out,
+ 
+ // Fork: K-specialized R1W8 GEMV (see q4_rowsplit_gemv.cuh).
+ void launch_q4_gemv_r1_w8_k6144(const Tensor& x, const Weight& w, Tensor& out, cudaStream_t stream);
++void launch_q4_gemv_r1_w8_k10240(const Tensor& x, const Weight& w, Tensor& out, cudaStream_t stream);
+ void launch_q4_gemv_r1_w8_k17408(const Tensor& x, const Weight& w, Tensor& out, cudaStream_t stream);
+ void launch_q4_simt_r8_c4(const Tensor& x, const Weight& w, Tensor& out, cudaStream_t stream);
+ void launch_q4_simt_r8_c8(const Tensor& x, const Weight& w, Tensor& out, cudaStream_t stream);
+diff --git a/src/ops/linear/q4/q4_rowsplit_gemv.cu b/src/ops/linear/q4/q4_rowsplit_gemv.cu
+index f0ade3dd..a41862bc 100644
+--- a/src/ops/linear/q4/q4_rowsplit_gemv.cu
++++ b/src/ops/linear/q4/q4_rowsplit_gemv.cu
+@@ -48,6 +48,10 @@ void launch_q4_gemv_r1_w8_k6144(const Tensor& x, const Weight& w, Tensor& out, c
+     launch_gemv<Q4GemvR1W8K6144Schedule>(x, w, out, stream);
+ }
+ 
++void launch_q4_gemv_r1_w8_k10240(const Tensor& x, const Weight& w, Tensor& out, cudaStream_t stream) {
++    launch_gemv<Q4GemvR1W8K17408Schedule>(x, w, out, stream);
++}
++
+ void launch_q4_gemv_r1_w8_k17408(const Tensor& x, const Weight& w, Tensor& out, cudaStream_t stream) {
+     launch_gemv<Q4GemvR1W8K17408Schedule>(x, w, out, stream);
+ }
+diff --git a/src/runtime/engine/request_memory.cpp b/src/runtime/engine/request_memory.cpp
+index 1d61348b..b76ebd7b 100644
+--- a/src/runtime/engine/request_memory.cpp
++++ b/src/runtime/engine/request_memory.cpp
+@@ -59,7 +59,8 @@ void RequestMemory::activate(std::size_t bytes, std::size_t alignment) {
+     }
+ 
+     if (impl_->arena == nullptr || bytes > impl_->arena->capacity()) {
+-        throw std::invalid_argument("request transient exceeds its frozen startup capacity");
++        (void)cudaSetDevice(impl_->device);
++        impl_->arena = std::make_unique<DeviceArena>(bytes);
+     }
+ 
+     impl_->active_bytes     = bytes;
+@@ -70,6 +71,10 @@ void RequestMemory::activate(std::size_t bytes, std::size_t alignment) {
+ void RequestMemory::deactivate() noexcept {
+     impl_->active_bytes     = 0;
+     impl_->active_alignment = 1;
++    if (impl_->arena != nullptr) {
++        (void)cudaSetDevice(impl_->device);
++        impl_->arena.reset();
++    }
+ }
+ 
+ TransientRegion RequestMemory::region() const noexcept {
+diff --git a/src/targets/qwen3_6/export/ninfer/targets/qwen3_6/vision.h b/src/targets/qwen3_6/export/ninfer/targets/qwen3_6/vision.h
+index 409a9dbe..f26f989b 100644
+--- a/src/targets/qwen3_6/export/ninfer/targets/qwen3_6/vision.h
++++ b/src/targets/qwen3_6/export/ninfer/targets/qwen3_6/vision.h
+@@ -32,10 +32,12 @@ struct VisionLayerPlan {
+     artifact::ObjectHandle qkv;
+     artifact::ObjectHandle qkv_bias;
+     artifact::ObjectHandle output;
++    artifact::NumericFormat output_format = artifact::NumericFormat::Q5G64_F16S;
+     artifact::ObjectHandle output_bias;
+     artifact::ObjectHandle fc1;
+     artifact::ObjectHandle fc1_bias;
+     artifact::ObjectHandle fc2;
++    artifact::NumericFormat fc2_format = artifact::NumericFormat::Q5G64_F16S;
+     artifact::ObjectHandle fc2_bias;
+     artifact::ObjectHandle norm1_weight;
+     artifact::ObjectHandle norm1_bias;
+diff --git a/src/targets/qwen3_6/impl/frontend/frontend.cpp b/src/targets/qwen3_6/impl/frontend/frontend.cpp
+index 478f63c2..c1cda226 100644
+--- a/src/targets/qwen3_6/impl/frontend/frontend.cpp
++++ b/src/targets/qwen3_6/impl/frontend/frontend.cpp
+@@ -606,15 +606,15 @@ public:
+         }
+         const std::uint64_t vision_tokens =
+             std::min<std::uint64_t>(options.max_context, kMaximumVisionTokens);
+-        processor.max_vision_tokens = vision_tokens;
+-        processor.max_raw_patches   = vision_tokens * kRawPatchesPerVisionToken;
++        const std::uint64_t bytes_per_token =
++            kRawPatchesPerVisionToken * kPreparedVisionPatchFeatures * sizeof(std::uint16_t);
++        const std::uint64_t max_live_tokens =
++            bytes_per_token > 0 ? options.media_live_bytes / bytes_per_token : vision_tokens;
++        processor.max_vision_tokens = std::min(vision_tokens, max_live_tokens);
++        processor.max_raw_patches   = processor.max_vision_tokens * kRawPatchesPerVisionToken;
+         if (vision_enabled) {
+             const std::uint64_t minimum_live =
+-                processor.max_raw_patches * kPreparedVisionPatchFeatures * sizeof(std::uint16_t);
+-            if (minimum_live > options.media_live_bytes) {
+-                throw std::invalid_argument(
+-                    "media live-byte capacity cannot hold the maximum supported Vision prompt");
+-            }
++                processor.max_raw_patches * bytes_per_token;
+             media_cache = std::make_shared<fi::MediaPreprocessCache>(
+                 options.media_cache_bytes, options.media_live_bytes,
+                 options.media_preprocess_threads, static_cast<std::size_t>(minimum_live));
+diff --git a/src/targets/qwen3_6/impl/runtime/layouts_impl.h b/src/targets/qwen3_6/impl/runtime/layouts_impl.h
+index f1326681..046f6c8f 100644
+--- a/src/targets/qwen3_6/impl/runtime/layouts_impl.h
++++ b/src/targets/qwen3_6/impl/runtime/layouts_impl.h
+@@ -528,7 +528,7 @@ WorkspacePlan build_workspace_plan(const SequencePlanImpl& plan) {
+     }
+ 
+     out.capacity = std::max({out.text_prefill, out.ordinary_round, out.mtp_prefill, out.mtp_round,
+-                             out.dflash_context, out.dflash_round, out.vision_encode});
++                             out.dflash_context, out.dflash_round});
+     return out;
+ }
+ 
+@@ -643,9 +643,7 @@ std::unique_ptr<SequencePlanImpl> build_sequence_candidate(const SequencePlannin
+     }
+ 
+     impl->device_reservation_bytes = checked_add(
+-        checked_add(
+-            checked_add(impl->persistent.bytes, impl->workspace.capacity, "sequence memory plan"),
+-            impl->request_transient_capacity_bytes, "request transient reservation"),
++        checked_add(impl->persistent.bytes, impl->workspace.capacity, "sequence memory plan"),
+         impl->graph_allowance_bytes, "sequence graph allowance");
+     return impl;
+ }
+diff --git a/src/targets/qwen3_6/impl/runtime/request_plan_impl.h b/src/targets/qwen3_6/impl/runtime/request_plan_impl.h
+index de125fd2..b5b2e390 100644
+--- a/src/targets/qwen3_6/impl/runtime/request_plan_impl.h
++++ b/src/targets/qwen3_6/impl/runtime/request_plan_impl.h
+@@ -143,9 +143,7 @@ ProgramImplCore::plan_request_base(const PreparedPromptData& prompt,
+             if (end > base->summary.prompt_tokens) {
+                 throw std::invalid_argument("vision item consumer span exceeds prompt");
+             }
+-            if (schedule::VisionContext::workspace_bytes(item) > work.capacity()) {
+-                throw std::invalid_argument("vision item exceeds the Program workspace envelope");
+-            }
++            // Fork: vision item workspace is allocated lazily if it exceeds work.capacity()
+             previous_end = end;
+             max_merged   = std::max(max_merged, item.merged_count);
+         }
+diff --git a/src/targets/qwen3_6/impl/runtime/vision_context.h b/src/targets/qwen3_6/impl/runtime/vision_context.h
+index 2531e85b..791c35f4 100644
+--- a/src/targets/qwen3_6/impl/runtime/vision_context.h
++++ b/src/targets/qwen3_6/impl/runtime/vision_context.h
+@@ -109,6 +109,7 @@ private:
+     std::optional<std::uint32_t> active_item_;
+     std::vector<std::uint32_t> encoded_payloads_pending_release_;
+     std::vector<CudaEventTimer> timers_;
++    std::unique_ptr<DeviceArena> lazy_output_storage_;
+ };
+ 
+ } // namespace ninfer::targets::qwen3_6::detail::NINFER_QWEN36_RUNTIME_NS::schedule
+diff --git a/src/targets/qwen3_6/impl/runtime/vision_context_impl.h b/src/targets/qwen3_6/impl/runtime/vision_context_impl.h
+index e2aa19bd..022e1a25 100644
+--- a/src/targets/qwen3_6/impl/runtime/vision_context_impl.h
++++ b/src/targets/qwen3_6/impl/runtime/vision_context_impl.h
+@@ -211,14 +211,17 @@ void VisionContext::encode(const VisionItemView& item, Tensor& output,
+     }
+     const VisionWorkspaceLayout layout = build_workspace_layout(
+         patches64, tokens64, static_cast<std::size_t>(control.segment_count));
++    std::unique_ptr<DeviceArena> lazy_storage;
+     if (workspace.capacity() < layout.bytes) {
+-        throw std::invalid_argument("Vision workspace capacity is too small for request");
++        lazy_storage = std::make_unique<DeviceArena>(layout.bytes);
+     }
+     const auto patches  = static_cast<std::int32_t>(patches64);
+     const auto tokens   = static_cast<std::int32_t>(tokens64);
+     cudaStream_t stream = ctx_.stream;
+     workspace.reset();
+-    const DeviceSpan backing = workspace.alloc_bytes(layout.bytes, kWorkspaceAlignment);
++    const DeviceSpan backing = lazy_storage
++                                   ? DeviceSpan{lazy_storage->base(), layout.bytes}
++                                   : workspace.alloc_bytes(layout.bytes, kWorkspaceAlignment);
+ 
+     Tensor position_ids = layout.position_ids.bind(backing);
+     Tensor cu_seqlens   = layout.cu_seqlens.bind(backing);
+@@ -307,6 +310,9 @@ void VisionContext::encode(const VisionItemView& item, Tensor& output,
+     ops::gelu(hidden, ops::GeluMode::Exact, stream);
+     ops::linear(hidden, *merger_.fc2, output, stream);
+     ops::add_bias(*merger_.fc2_bias, output, stream);
++    if (lazy_storage) {
++        CUDA_CHECK(cudaStreamSynchronize(stream));
++    }
+ }
+ 
+ VisionPrefillSession::VisionPrefillSession(DeviceContext& device, const LoadedModelData& model,
+@@ -319,9 +325,7 @@ VisionPrefillSession::VisionPrefillSession(DeviceContext& device, const LoadedMo
+     if (plan_.control == nullptr || plan_.control->items.empty() || plan_.uses.empty()) {
+         throw std::invalid_argument("Vision prefill plan has no suffix item spans");
+     }
+-    if (transient_.data == nullptr || transient_.alignment < kWorkspaceAlignment) {
+-        throw std::invalid_argument("Vision item output transient is missing or misaligned");
+-    }
++    // Fork: transient output is allocated lazily if missing or too small
+     encoded_payloads_pending_release_.reserve(plan_.uses.size());
+     timers_.reserve(plan_.uses.size());
+ }
+@@ -369,11 +373,15 @@ VisionChunk VisionPrefillSession::prepare_chunk(std::uint32_t begin, std::uint32
+         checked_mul(checked_mul(static_cast<std::size_t>(VisionScheduleConfig::out_hidden),
+                                 control.merged_count, "item output elements"),
+                     dtype_size(DType::BF16), "item output bytes");
+-    if (output_bytes > transient_.size) {
+-        throw std::invalid_argument("Vision item output transient is too small");
++    void* output_data = transient_.data;
++    if (output_bytes > transient_.size || output_data == nullptr) {
++        if (!lazy_output_storage_ || lazy_output_storage_->capacity() < output_bytes) {
++            lazy_output_storage_ = std::make_unique<DeviceArena>(output_bytes);
++        }
++        output_data = lazy_output_storage_->base();
+     }
+     Tensor output(
+-        transient_.data, DType::BF16,
++        output_data, DType::BF16,
+         {VisionScheduleConfig::out_hidden, static_cast<std::int32_t>(control.merged_count)});
+ 
+     if (!active_item_ || *active_item_ != active->item_index) {
+diff --git a/src/targets/qwen3_6/impl/vision/bindings.cpp b/src/targets/qwen3_6/impl/vision/bindings.cpp
+index 9763c9df..b1538dc4 100644
+--- a/src/targets/qwen3_6/impl/vision/bindings.cpp
++++ b/src/targets/qwen3_6/impl/vision/bindings.cpp
+@@ -35,7 +35,11 @@ VisionBackbonePlan bind_vision_backbone(artifact::Binder& binder,
+                                         {3 * VisionBackboneConfig::hidden, VisionBackboneConfig::hidden});
+         target.qkv_bias          = bind(prefix + "attention/qkv_bias", NumericFormat::BF16,
+                                         {3 * VisionBackboneConfig::hidden});
+-        target.output            = bind(prefix + "attention/output", NumericFormat::Q5G64_F16S,
++        const auto* out_desc     = binder.find_tensor(prefix + "attention/output");
++        target.output_format     = (out_desc && out_desc->format == NumericFormat::Q4G64_F16S)
++                                       ? NumericFormat::Q4G64_F16S
++                                       : NumericFormat::Q5G64_F16S;
++        target.output            = bind(prefix + "attention/output", target.output_format,
+                                         {VisionBackboneConfig::hidden, VisionBackboneConfig::hidden});
+         target.output_bias       = bind(prefix + "attention/output_bias", NumericFormat::BF16,
+                                         {VisionBackboneConfig::hidden});
+@@ -43,7 +47,11 @@ VisionBackbonePlan bind_vision_backbone(artifact::Binder& binder,
+                                         {VisionBackboneConfig::intermediate, VisionBackboneConfig::hidden});
+         target.fc1_bias          = bind(prefix + "mlp/fc1_bias", NumericFormat::BF16,
+                                         {VisionBackboneConfig::intermediate});
+-        target.fc2               = bind(prefix + "mlp/fc2", NumericFormat::Q5G64_F16S,
++        const auto* fc2_desc     = binder.find_tensor(prefix + "mlp/fc2");
++        target.fc2_format        = (fc2_desc && fc2_desc->format == NumericFormat::Q4G64_F16S)
++                                       ? NumericFormat::Q4G64_F16S
++                                       : NumericFormat::Q5G64_F16S;
++        target.fc2               = bind(prefix + "mlp/fc2", target.fc2_format,
+                                         {VisionBackboneConfig::hidden, VisionBackboneConfig::intermediate});
+         target.fc2_bias =
+             bind(prefix + "mlp/fc2_bias", NumericFormat::BF16, {VisionBackboneConfig::hidden});
+@@ -115,7 +123,7 @@ VisionCommonWeights materialize_vision_common(const artifact::MaterializedArtifa
+         target.qkv_bias = artifact::materialized_tensor(
+             materialized, source.qkv_bias, NumericFormat::BF16, {3 * VisionBackboneConfig::hidden});
+         target.output = artifact::materialized_weight(
+-            materialized, source.output, NumericFormat::Q5G64_F16S, VisionBackboneConfig::hidden,
++            materialized, source.output, source.output_format, VisionBackboneConfig::hidden,
+             VisionBackboneConfig::hidden);
+         target.output_bias = artifact::materialized_tensor(
+             materialized, source.output_bias, NumericFormat::BF16, {VisionBackboneConfig::hidden});
+@@ -126,7 +134,7 @@ VisionCommonWeights materialize_vision_common(const artifact::MaterializedArtifa
+             artifact::materialized_tensor(materialized, source.fc1_bias, NumericFormat::BF16,
+                                           {VisionBackboneConfig::intermediate});
+         target.fc2 = artifact::materialized_weight(
+-            materialized, source.fc2, NumericFormat::Q5G64_F16S, VisionBackboneConfig::hidden,
++            materialized, source.fc2, source.fc2_format, VisionBackboneConfig::hidden,
+             VisionBackboneConfig::intermediate);
+         target.fc2_bias = artifact::materialized_tensor(
+             materialized, source.fc2_bias, NumericFormat::BF16, {VisionBackboneConfig::hidden});
+diff --git a/src/targets/qwen3_6_27b/impl/load/bindings.cpp b/src/targets/qwen3_6_27b/impl/load/bindings.cpp
+index dfb30c97..a0a50ceb 100644
+--- a/src/targets/qwen3_6_27b/impl/load/bindings.cpp
++++ b/src/targets/qwen3_6_27b/impl/load/bindings.cpp
+@@ -495,25 +495,42 @@ ArtifactLoadPlan bind_artifact(artifact::Binder& binder, WeightsProfile weights_
+                               std::initializer_list<std::uint64_t> shape) {
+         return artifact::bind_tensor(binder, name, format, shape, mtp_placement);
+     };
+-    out.mtp.input_projection =
+-        bind_mtp("mtp/input_projection", NumericFormat::W8G32_F16S, {5120, 10240});
++    const auto mtp_format_for                     = [&](std::string_view name) {
++        if (const auto* desc = binder.find_tensor(name)) {
++            if (desc->format == NumericFormat::Q4G64_F16S) {
++                return NumericFormat::Q4G64_F16S;
++            }
++        }
++        return NumericFormat::W8G32_F16S;
++    };
++
++    const NumericFormat input_proj_fmt = mtp_format_for("mtp/input_projection");
++    out.mtp.input_projection           = WeightPlan{
++        .object = bind_mtp("mtp/input_projection", input_proj_fmt, {5120, 10240}),
++        .format = input_proj_fmt};
+     out.mtp.embedding_norm       = bind_mtp("mtp/embedding_norm", NumericFormat::BF16, {5120});
+     out.mtp.hidden_norm          = bind_mtp("mtp/hidden_norm", NumericFormat::BF16, {5120});
+     out.mtp.input_norm           = bind_mtp("mtp/layer/input_norm", NumericFormat::BF16, {5120});
+-    out.mtp.query_key_gate_value = bind_mtp("mtp/layer/attention/query_key_gate_value",
+-                                            NumericFormat::W8G32_F16S, {14336, 5120});
++    const NumericFormat qkgv_fmt = mtp_format_for("mtp/layer/attention/query_key_gate_value");
++    out.mtp.query_key_gate_value = WeightPlan{
++        .object = bind_mtp("mtp/layer/attention/query_key_gate_value", qkgv_fmt, {14336, 5120}),
++        .format = qkgv_fmt};
+     out.mtp.query_norm = bind_mtp("mtp/layer/attention/query_norm", NumericFormat::BF16, {256});
+     out.mtp.key_norm   = bind_mtp("mtp/layer/attention/key_norm", NumericFormat::BF16, {256});
+-    out.mtp.output =
+-        bind_mtp("mtp/layer/attention/output", NumericFormat::W8G32_F16S, {5120, 6144});
++    const NumericFormat output_fmt = mtp_format_for("mtp/layer/attention/output");
++    out.mtp.output                 = WeightPlan{
++        .object = bind_mtp("mtp/layer/attention/output", output_fmt, {5120, 6144}),
++        .format = output_fmt};
+     out.mtp.post_attention_norm =
+         bind_mtp("mtp/layer/post_attention_norm", NumericFormat::BF16, {5120});
+-    out.mtp.mlp.gate_up = WeightPlan{
+-        .object = bind_mtp("mtp/layer/mlp/gate_up", NumericFormat::W8G32_F16S, {34816, 5120}),
+-        .format = NumericFormat::W8G32_F16S};
+-    out.mtp.mlp.down = WeightPlan{
+-        .object = bind_mtp("mtp/layer/mlp/down", NumericFormat::W8G32_F16S, {5120, 17408}),
+-        .format = NumericFormat::W8G32_F16S};
++    const NumericFormat gate_up_fmt = mtp_format_for("mtp/layer/mlp/gate_up");
++    out.mtp.mlp.gate_up             = WeightPlan{
++        .object = bind_mtp("mtp/layer/mlp/gate_up", gate_up_fmt, {34816, 5120}),
++        .format = gate_up_fmt};
++    const NumericFormat down_fmt = mtp_format_for("mtp/layer/mlp/down");
++    out.mtp.mlp.down             = WeightPlan{
++        .object = bind_mtp("mtp/layer/mlp/down", down_fmt, {5120, 17408}),
++        .format = down_fmt};
+     out.mtp.final_norm = bind_mtp("mtp/final_norm", NumericFormat::BF16, {5120});
+ 
+     const artifact::TensorPlacement vision_placement =
+@@ -597,16 +614,16 @@ LoadedModelData::LoadedModelData(BindingPlan plan, artifact::MaterializedArtifac
+ 
+     if (plan.features.mtp()) {
+         auto& mtp            = runtime.mtp.emplace();
+-        mtp.input_projection = artifact::materialized_weight(
+-            backing, plan.mtp.input_projection, NumericFormat::W8G32_F16S, 5120, 10240);
++        mtp.input_projection = materialized_weight(
++            backing, plan.mtp.input_projection, 5120, 10240);
+         mtp.embedding_norm   = artifact::materialized_tensor(backing, plan.mtp.embedding_norm,
+                                                              NumericFormat::BF16, {5120});
+         mtp.hidden_norm      = artifact::materialized_tensor(backing, plan.mtp.hidden_norm,
+                                                              NumericFormat::BF16, {5120});
+         mtp.input_norm       = artifact::materialized_tensor(backing, plan.mtp.input_norm,
+                                                              NumericFormat::BF16, {5120});
+-        mtp.attention.packed = artifact::materialized_weight(
+-            backing, plan.mtp.query_key_gate_value, NumericFormat::W8G32_F16S, 14336, 5120);
++        mtp.attention.packed = materialized_weight(
++            backing, plan.mtp.query_key_gate_value, 14336, 5120);
+         mtp.attention.query       = row_view(mtp.attention.packed, 0, 6144);
+         mtp.attention.key         = row_view(mtp.attention.packed, 6144, 1024);
+         mtp.attention.output_gate = row_view(mtp.attention.packed, 7168, 6144);
+@@ -615,8 +632,7 @@ LoadedModelData::LoadedModelData(BindingPlan plan, artifact::MaterializedArtifac
+             artifact::materialized_tensor(backing, plan.mtp.query_norm, NumericFormat::BF16, {256});
+         mtp.key_norm =
+             artifact::materialized_tensor(backing, plan.mtp.key_norm, NumericFormat::BF16, {256});
+-        mtp.output              = artifact::materialized_weight(backing, plan.mtp.output,
+-                                                                NumericFormat::W8G32_F16S, 5120, 6144);
++        mtp.output              = materialized_weight(backing, plan.mtp.output, 5120, 6144);
+         mtp.post_attention_norm = artifact::materialized_tensor(
+             backing, plan.mtp.post_attention_norm, NumericFormat::BF16, {5120});
+         mtp.post_mixer = load_mlp(plan.mtp.mlp, backing);
+diff --git a/src/targets/qwen3_6_27b/impl/load/bindings.h b/src/targets/qwen3_6_27b/impl/load/bindings.h
+index 70a14140..1de0e3cd 100644
+--- a/src/targets/qwen3_6_27b/impl/load/bindings.h
++++ b/src/targets/qwen3_6_27b/impl/load/bindings.h
+@@ -91,14 +91,14 @@ struct TextLayerPlan {
+ };
+ 
+ struct MtpPlan {
+-    artifact::ObjectHandle input_projection;
++    WeightPlan input_projection;
+     artifact::ObjectHandle embedding_norm;
+     artifact::ObjectHandle hidden_norm;
+     artifact::ObjectHandle input_norm;
+-    artifact::ObjectHandle query_key_gate_value;
++    WeightPlan query_key_gate_value;
+     artifact::ObjectHandle query_norm;
+     artifact::ObjectHandle key_norm;
+-    artifact::ObjectHandle output;
++    WeightPlan output;
+     artifact::ObjectHandle post_attention_norm;
+     MlpPlan mlp;
+     artifact::ObjectHandle final_norm;
+diff --git a/src/targets/qwen3_6_27b/impl/variant.cpp b/src/targets/qwen3_6_27b/impl/variant.cpp
+index c2036d91..7bc60a5e 100644
+--- a/src/targets/qwen3_6_27b/impl/variant.cpp
++++ b/src/targets/qwen3_6_27b/impl/variant.cpp
+@@ -192,7 +192,12 @@ void Variant::mtp_attention_projection(const Tensor& hidden,
+ 
+ void Variant::mtp_kv_projection(const Tensor& hidden, const MtpAttentionProjectionWeights& weights,
+                                 Tensor& key, Tensor& value, WorkspaceArena&, cudaStream_t stream) {
+-    ops::linear_pair(hidden, weights.key, weights.value, key, value, stream);
++    if (weights.key.qtype == QType::W8G32_F16S && weights.value.qtype == QType::W8G32_F16S) {
++        ops::linear_pair(hidden, weights.key, weights.value, key, value, stream);
++    } else {
++        ops::linear(hidden, weights.key, key, stream);
++        ops::linear(hidden, weights.value, value, stream);
++    }
+ }
+ 
+ void Variant::mtp_q_gate_projection(const Tensor& hidden,

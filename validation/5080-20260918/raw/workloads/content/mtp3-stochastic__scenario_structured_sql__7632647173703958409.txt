@@ -1,0 +1,270 @@
+SET client_min_messages = warning;
+SET search_path TO public;
+
+DROP VIEW IF EXISTS v_run_summary CASCADE;
+DROP VIEW IF EXISTS v_model_comparison CASCADE;
+DROP FUNCTION IF EXISTS upsert_request_metrics CASCADE;
+DROP TABLE IF EXISTS request_metrics CASCADE;
+DROP TABLE IF EXISTS runs CASCADE;
+DROP TABLE IF EXISTS fixtures CASCADE;
+DROP TABLE IF EXISTS models CASCADE;
+
+CREATE TABLE models (
+    model_id SERIAL PRIMARY KEY,
+    name VARCHAR(100) NOT NULL UNIQUE,
+    architecture VARCHAR(50) NOT NULL CHECK (architecture IN ('Llama', 'Mistral', 'GPT', 'Claude')),
+    context_length INT NOT NULL CHECK (context_length > 0),
+    created_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP
+);
+
+CREATE TABLE fixtures (
+    fixture_id SERIAL PRIMARY KEY,
+    kind VARCHAR(50) NOT NULL CHECK (kind IN ('short', 'medium', 'long', 'code')),
+    token_count INT NOT NULL CHECK (token_count > 0),
+    description TEXT
+);
+
+CREATE TABLE runs (
+    run_id SERIAL PRIMARY KEY,
+    model_id INT NOT NULL REFERENCES models(model_id),
+    fixture_id INT NOT NULL REFERENCES fixtures(fixture_id),
+    started_at TIMESTAMP NOT NULL DEFAULT CURRENT_TIMESTAMP,
+    finished_at TIMESTAMP,
+    status VARCHAR(20) NOT NULL DEFAULT 'running' CHECK (status IN ('running', 'completed', 'failed')),
+    UNIQUE (model_id, fixture_id)
+);
+
+CREATE INDEX idx_runs_model ON runs(model_id);
+CREATE INDEX idx_runs_fixture ON runs(fixture_id);
+CREATE INDEX idx_runs_status ON runs(status);
+
+CREATE TABLE request_metrics (
+    metric_id BIGSERIAL PRIMARY KEY,
+    run_id INT NOT NULL REFERENCES runs(run_id) ON DELETE CASCADE,
+    seq_num INT NOT NULL,
+    prompt_tokens INT NOT NULL CHECK (prompt_tokens >= 0),
+    completion_tokens INT NOT NULL CHECK (completion_tokens >= 0),
+    latency_ms NUMERIC(10, 2) NOT NULL CHECK (latency_ms >= 0),
+    mtp_acceptance_rate NUMERIC(5, 4) CHECK (mtp_acceptance_rate BETWEEN 0 AND 1),
+    retention_score NUMERIC(5, 4) CHECK (retention_score BETWEEN 0 AND 1),
+    recorded_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP,
+    UNIQUE (run_id, seq_num)
+);
+
+CREATE INDEX idx_metrics_run ON request_metrics(run_id);
+CREATE INDEX idx_metrics_latency ON request_metrics(latency_ms);
+CREATE INDEX idx_metrics_mtp ON request_metrics(mtp_acceptance_rate);
+
+CREATE OR REPLACE FUNCTION upsert_request_metrics(
+    p_run_id INT,
+    p_seq_num INT,
+    p_prompt_tokens INT,
+    p_completion_tokens INT,
+    p_latency_ms NUMERIC,
+    p_mtp_acceptance_rate NUMERIC,
+    p_retention_score NUMERIC
+) RETURNS VOID AS $$
+BEGIN
+    INSERT INTO request_metrics (
+        run_id, seq_num, prompt_tokens, completion_tokens, 
+        latency_ms, mtp_acceptance_rate, retention_score
+    ) VALUES (
+        p_run_id, p_seq_num, p_prompt_tokens, p_completion_tokens,
+        p_latency_ms, p_mtp_acceptance_rate, p_retention_score
+    )
+    ON CONFLICT (run_id, seq_num) DO UPDATE SET
+        prompt_tokens = EXCLUDED.prompt_tokens,
+        completion_tokens = EXCLUDED.completion_tokens,
+        latency_ms = EXCLUDED.latency_ms,
+        mtp_acceptance_rate = EXCLUDED.mtp_acceptance_rate,
+        retention_score = EXCLUDED.retention_score,
+        recorded_at = CURRENT_TIMESTAMP;
+END;
+$$ LANGUAGE plpgsql;
+
+CREATE VIEW v_run_summary AS
+SELECT 
+    r.run_id,
+    m.name AS model_name,
+    f.kind AS fixture_kind,
+    r.status,
+    COUNT(q.metric_id) AS total_requests,
+    AVG(q.latency_ms) AS avg_latency_ms,
+    SUM(q.prompt_tokens + q.completion_tokens) AS total_tokens,
+    AVG(q.mtp_acceptance_rate) AS avg_mtp_acceptance,
+    AVG(q.retention_score) AS avg_retention
+FROM runs r
+JOIN models m ON r.model_id = m.model_id
+JOIN fixtures f ON r.fixture_id = f.fixture_id
+LEFT JOIN request_metrics q ON r.run_id = q.run_id
+GROUP BY r.run_id, m.name, f.kind, r.status;
+
+CREATE VIEW v_model_comparison AS
+SELECT 
+    m.name AS model_name,
+    m.architecture,
+    f.kind AS fixture_kind,
+    COUNT(DISTINCT r.run_id) AS run_count,
+    COUNT(q.metric_id) AS sample_count,
+    ROUND(AVG(q.latency_ms), 2) AS mean_latency,
+    STDDEV_POP(q.latency_ms) AS std_latency,
+    PERCENTILE_CONT(0.95) WITHIN GROUP (ORDER BY q.latency_ms) AS p95_latency,
+    ROUND(AVG(q.mtp_acceptance_rate), 4) AS mean_mtp_acc,
+    ROUND(AVG(q.retention_score), 4) AS mean_retention
+FROM models m
+JOIN runs r ON m.model_id = r.model_id
+JOIN fixtures f ON r.fixture_id = f.fixture_id
+LEFT JOIN request_metrics q ON r.run_id = q.run_id
+WHERE q.metric_id IS NOT NULL
+GROUP BY m.name, m.architecture, f.kind;
+
+INSERT INTO models (name, architecture, context_length) VALUES
+('llama-3-70b-instruct', 'Llama', 8192),
+('mistral-large-latest', 'Mistral', 32768);
+
+INSERT INTO fixtures (kind, token_count, description) VALUES
+('short', 128, 'Simple Q&A with minimal context'),
+('medium', 2048, 'Standard conversation with moderate history'),
+('long', 16384, 'Extended context requiring deep attention'),
+('code', 4096, 'Code generation and analysis tasks');
+
+INSERT INTO runs (model_id, fixture_id, started_at, finished_at, status) VALUES
+(1, 1, '2024-01-01 10:00:00', '2024-01-01 10:05:00', 'completed'),
+(1, 2, '2024-01-01 10:06:00', '2024-01-01 10:12:00', 'completed'),
+(1, 3, '2024-01-01 10:13:00', '2024-01-01 10:25:00', 'completed'),
+(1, 4, '2024-01-01 10:26:00', '2024-01-01 10:35:00', 'completed'),
+(2, 1, '2024-01-01 11:00:00', '2024-01-01 11:04:00', 'completed'),
+(2, 2, '2024-01-01 11:05:00', '2024-01-01 11:10:00', 'completed'),
+(2, 3, '2024-01-01 11:11:00', '2024-01-01 11:22:00', 'completed'),
+(2, 4, '2024-01-01 11:23:00', '2024-01-01 11:32:00', 'completed');
+
+WITH gen_data AS (
+    SELECT
+        r.run_id,
+        generate_series(1, 10) AS seq_num,
+        CASE WHEN f.kind = 'short' THEN 128
+             WHEN f.kind = 'medium' THEN 2048
+             WHEN f.kind = 'long' THEN 16384
+             ELSE 4096 END AS base_prompt,
+        CASE WHEN f.kind = 'short' THEN 64
+             WHEN f.kind = 'medium' THEN 256
+             WHEN f.kind = 'long' THEN 512
+             ELSE 1024 END AS base_completion,
+        m.name
+    FROM runs r
+    JOIN models m ON r.model_id = m.model_id
+    JOIN fixtures f ON r.fixture_id = f.fixture_id
+)
+SELECT
+    g.run_id,
+    g.seq_num,
+    g.base_prompt + (random() * 10)::INT AS prompt_tokens,
+    g.base_completion + (random() * 20)::INT AS completion_tokens,
+    CASE 
+        WHEN g.name LIKE 'llama%' THEN 500 + random() * 500
+        ELSE 300 + random() * 400
+    END::NUMERIC(10,2) AS latency_ms,
+    CASE 
+        WHEN g.name LIKE 'llama%' THEN 0.75 + random() * 0.15
+        ELSE 0.80 + random() * 0.15
+    END::NUMERIC(5,4) AS mtp_acc,
+    CASE 
+        WHEN g.name LIKE 'llama%' THEN 0.85 + random() * 0.10
+        ELSE 0.90 + random() * 0.08
+    END::NUMERIC(5,4) AS retention
+FROM gen_data g;
+
+SELECT 'Query 1: Throughput by Model and Fixture' AS query_title;
+SELECT 
+    m.name AS model,
+    f.kind AS fixture_type,
+    COUNT(*) AS requests,
+    SUM(q.prompt_tokens + q.completion_tokens) / COUNT(*) AS avg_tokens_per_req,
+    SUM(q.prompt_tokens + q.completion_tokens) / (EXTRACT(EPOCH FROM MAX(r.finished_at) - MIN(r.started_at))) AS tokens_per_sec
+FROM request_metrics q
+JOIN runs r ON q.run_id = r.run_id
+JOIN models m ON r.model_id = m.model_id
+JOIN fixtures f ON r.fixture_id = f.fixture_id
+GROUP BY m.name, f.kind
+ORDER BY tokens_per_sec DESC;
+
+SELECT 'Query 2: Latency Variability Analysis' AS query_title;
+SELECT 
+    m.name AS model,
+    f.kind AS fixture_type,
+    ROUND(MIN(q.latency_ms), 2) AS min_lat,
+    ROUND(MAX(q.latency_ms), 2) AS max_lat,
+    ROUND(AVG(q.latency_ms), 2) AS mean_lat,
+    ROUND(STDDEV_POP(q.latency_ms), 2) AS std_lat,
+    ROUND(STDDEV_POP(q.latency_ms) / NULLIF(AVG(q.latency_ms), 0), 4) AS cv_ratio
+FROM request_metrics q
+JOIN runs r ON q.run_id = r.run_id
+JOIN models m ON r.model_id = m.model_id
+JOIN fixtures f ON r.fixture_id = f.fixture_id
+GROUP BY m.name, f.kind
+ORDER BY cv_ratio DESC;
+
+SELECT 'Query 3: Long-Context Retention Performance' AS query_title;
+SELECT 
+    m.name AS model,
+    f.kind AS fixture_type,
+    COUNT(*) AS samples,
+    ROUND(AVG(q.retention_score), 4) AS avg_retention,
+    ROUND(PERCENTILE_CONT(0.25) WITHIN GROUP (ORDER BY q.retention_score), 4) AS p25_retention,
+    ROUND(PERCENTILE_CONT(0.75) WITHIN GROUP (ORDER BY q.retention_score), 4) AS p75_retention,
+    COUNT(CASE WHEN q.retention_score < 0.80 THEN 1 END) AS low_retention_count
+FROM request_metrics q
+JOIN runs r ON q.run_id = r.run_id
+JOIN models m ON r.model_id = m.model_id
+JOIN fixtures f ON r.fixture_id = f.fixture_id
+WHERE f.kind = 'long'
+GROUP BY m.name, f.kind
+ORDER BY avg_retention DESC;
+
+SELECT 'Query 4: MTP Acceptance Rate Trends' AS query_title;
+SELECT 
+    m.name AS model,
+    f.kind AS fixture_type,
+    ROUND(AVG(q.mtp_acceptance_rate), 4) AS avg_mtp_acc,
+    ROUND(MIN(q.mtp_acceptance_rate), 4) AS min_mtp_acc,
+    ROUND(MAX(q.mtp_acceptance_rate), 4) AS max_mtp_acc,
+    COUNT(CASE WHEN q.mtp_acceptance_rate > 0.85 THEN 1 END) AS high_acceptance_samples,
+    ROUND(COUNT(CASE WHEN q.mtp_acceptance_rate > 0.85 THEN 1 END)::FLOAT / COUNT(*), 4) AS high_acceptance_pct
+FROM request_metrics q
+JOIN runs r ON q.run_id = r.run_id
+JOIN models m ON r.model_id = m.model_id
+JOIN fixtures f ON r.fixture_id = f.fixture_id
+GROUP BY m.name, f.kind
+ORDER BY avg_mtp_acc DESC;
+
+SELECT 'Query 5: Correlation Between Tokens and Latency' AS query_title;
+SELECT 
+    m.name AS model,
+    f.kind AS fixture_type,
+    CORR(q.prompt_tokens + q.completion_tokens, q.latency_ms) AS corr_coeff,
+    COVAR_SAMP(q.prompt_tokens + q.completion_tokens, q.latency_ms) AS covariance,
+    COUNT(*) AS n_samples
+FROM request_metrics q
+JOIN runs r ON q.run_id = r.run_id
+JOIN models m ON r.model_id = m.model_id
+JOIN fixtures f ON r.fixture_id = f.fixture_id
+GROUP BY m.name, f.kind
+ORDER BY ABS(corr_coeff) DESC;
+
+SELECT 'Query 6: Top Performers by Composite Score' AS query_title;
+SELECT 
+    m.name AS model,
+    f.kind AS fixture_type,
+    COUNT(*) AS samples,
+    ROUND((AVG(q.mtp_acceptance_rate) * 0.4 + 
+           AVG(q.retention_score) * 0.3 + 
+           (1 - LEAST(1, AVG(q.latency_ms) / 2000)) * 0.3) * 100, 2) AS composite_score,
+    ROUND(AVG(q.mtp_acceptance_rate), 4) AS mtp_component,
+    ROUND(AVG(q.retention_score), 4) AS retention_component,
+    ROUND(1 - LEAST(1, AVG(q.latency_ms) / 2000), 4) AS speed_component
+FROM request_metrics q
+JOIN runs r ON q.run_id = r.run_id
+JOIN models m ON r.model_id = m.model_id
+JOIN fixtures f ON r.fixture_id = f.fixture_id
+GROUP BY m.name, f.kind
+ORDER BY composite_score DESC;

@@ -1,0 +1,52 @@
+第一节 — 所有权。可靠的推理服务为每个可变边界指定唯一的所有者。程序可以将数学运算委托给内核，但内核不会静默地推进请求状态。这种分离使得成功轮次、被拒绝的投机草稿、取消操作以及前缀恢复都能作为完整的状态转换被观测到。
+
+第二节 — 测量。加载时间、提示词准备、预填充（prefill）、解码（decode）和网络传输分别回答不同的问题。基准测试必须明确指出每个报告速率所对应的具体区间。在本引擎中，首个生成的 token 归属于预填充阶段，而其余生成的 token 归属于解码阶段，因此 token 计数必须遵循相同的边界定义。
+
+第三节 — 可复现性。在正式运行之前，输入数据将被冻结。请求体、已解析的采样参数、模型标识、上下文容量、缓存格式以及原始计时字段均会被保留。预热请求会被标记并排除在外，而不是混入受测的重复样本中。
+
+第四节 — 长上下文。分配最大缓存容量并不等同于呈现最大长度的提示词。引擎可以保持 262,144 个 token 的内存分配，同时测试中实际准备的提示词长度可以变化。这样可以在不改变各用例间内存规划的前提下，隔离出可见上下文的成本。
+
+第五节 — 投机。草稿的接受率取决于工作负载类型。代码、散文、翻译和结构化记录具有不同的局部可预测性，因此既需要统计已接受草稿的百分比，也需要统计每轮的输出 token 数。吞吐量仍然是用户可见的最终结果；接受率统计数据用于解释而非替代该结果。
+
+第六节 — 报告。应公布完整配置、重复测量值、变异情况以及实质性限制条件。不要丢弃有效的慢速运行结果，也不要将内部计时器描述为客户观察到的延迟。清晰的边界能让优异的结果更值得信赖。
+
+***
+
+**英中术语表**
+
+1. Inference service — 推理服务
+2. Mutable frontier — 可变边界
+3. Owner — 所有者
+4. Kernel — 内核
+5. Request state — 请求状态
+6. Speculative draft — 投机草稿
+7. Prefix restoration — 前缀恢复
+8. Complete transitions — 完整状态转换
+9. Loading time — 加载时间
+10. Prompt preparation — 提示词准备
+11. Prefill — 预填充
+12. Decode — 解码
+13. Network transport — 网络传输
+14. Benchmark — 基准测试
+15. Reported rate — 报告速率
+16. Token — Token（词元/令牌）
+17. Reproducibility — 可复现性
+18. Sampling parameters — 采样参数
+19. Model identity — 模型标识
+20. Context capacity — 上下文容量
+21. Cache format — 缓存格式
+22. Raw timing fields — 原始计时字段
+23. Warm-up requests — 预热请求
+24. Long context — 长上下文
+25. Cache allocation — 缓存分配
+26. Local predictability — 局部可预测性
+27. Accepted-draft percentage — 已接受草稿百分比
+28. Output tokens per round — 每轮输出 token 数
+29. Throughput — 吞吐量
+30. User-visible result — 用户可见结果
+31. Configuration — 配置
+32. Variation — 变异
+33. Material limitations — 实质性限制条件
+34. Slow run — 慢速运行
+35. Internal timer — 内部计时器
+36. Client-observed latency — 客户端观察到的延迟

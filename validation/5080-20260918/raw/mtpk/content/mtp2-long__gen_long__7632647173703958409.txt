@@ -1,0 +1,80 @@
+2. In contrast, a multi-stream decode step is often compute bound because the arithmetic intensity increases as batch size grows, allowing better utilization of matrix multiplication units.
+3. Memory hierarchy optimization requires careful placement of intermediate activations to minimize data movement between high-bandwidth memory and on-chip SRAM.
+4. Quantization reduces the dynamic range of weights and activations, thereby decreasing memory footprint and increasing effective bandwidth for data transfer.
+5. Sparsity in neural networks allows skipping zero-valued multiplications, which can significantly reduce computational load if the hardware supports conditional execution or sparse matrix operations.
+6. Kernel fusion combines multiple operations into a single GPU kernel to eliminate redundant memory reads and writes, reducing latency and improving throughput.
+7. Double buffering techniques overlap data loading with computation, ensuring that the processing units remain busy while new data is being fetched from main memory.
+8. Instruction-level parallelism exploits independent operations within a cycle to maximize instruction throughput, requiring sufficient register file capacity and issue width.
+9. Data-level parallelism distributes identical operations across multiple data elements, leveraging SIMD instructions to process vectors of data simultaneously.
+10. Loop unrolling reduces branch overhead by expanding loop bodies, allowing more instructions to be issued per iteration and improving pipeline efficiency.
+11. Cache blocking partitions large matrices into smaller tiles that fit within the L1 cache, reducing cache misses and improving data locality for matrix multiplications.
+12. Prefetching anticipates future memory accesses and initiates data transfers early, hiding memory latency behind ongoing computation tasks.
+13. Asynchronous memory copy engines operate independently of the main CPU cores, enabling overlapping of data movement and computation phases.
+14. Tensor Core architecture provides specialized hardware for low-precision matrix multiply-accumulate operations, offering massive throughput gains for deep learning workloads.
+15. Dynamic voltage and frequency scaling adjusts processor speed based on workload demand, balancing performance against power consumption and thermal limits.
+16. Power gating isolates unused circuit blocks from the power supply, eliminating static leakage currents and reducing overall system energy consumption.
+17. Clock gating disables clock signals to idle logic blocks, preventing unnecessary toggling and reducing dynamic power dissipation.
+18. Thermal throttling reduces operating frequency when temperature exceeds safe thresholds, protecting hardware integrity at the cost of reduced performance.
+19. Workload characterization involves analyzing access patterns, data types, and operation distributions to identify bottlenecks and optimize resource allocation.
+20. Roofline model visualizes the relationship between arithmetic intensity and peak performance, identifying whether a kernel is memory-bound or compute-bound.
+21. Arithmetic intensity measures the ratio of floating-point operations to bytes transferred, serving as a key metric for predicting kernel performance.
+22. Bandwidth saturation occurs when memory controllers reach their maximum data rate, limiting further performance gains regardless of compute capability.
+23. Compute saturation happens when all available arithmetic units are fully utilized, indicating that the system has reached its theoretical peak FLOPS.
+24. Latency hiding techniques use out-of-order execution and speculative execution to keep execution units busy while waiting for dependent data.
+25. Branch prediction accuracy impacts pipeline efficiency, as mispredictions cause significant stalls due to the need to flush and refill the instruction pipeline.
+26. Speculative execution guesses the outcome of conditional branches and executes both paths, committing only the correct path once the condition is resolved.
+27. Out-of-order execution reorders instructions based on operand availability rather than program order, maximizing instruction level parallelism.
+28. Register renaming eliminates false dependencies between instructions, allowing the processor to execute instructions in any safe order.
+29. Scoreboarding tracks the status of instructions and operands, managing the flow of data through the execution pipeline without explicit locks.
+30. Vector length determines the number of elements processed per instruction, with longer vectors increasing throughput but potentially increasing register pressure.
+31. Alignment requirements ensure that data accesses start at boundaries compatible with the memory subsystem, avoiding partial cache line transfers.
+32. Unaligned memory accesses incur penalties due to multiple transaction cycles or complex logic for handling split cache lines.
+33. Stride patterns in memory access affect prefetcher effectiveness, with regular strides enabling accurate prediction of future addresses.
+34. Irregular memory access patterns degrade prefetcher performance, leading to increased cache miss rates and higher average memory latency.
+35. Write-back caching keeps modified data in the cache until it is evicted, reducing immediate traffic to main memory.
+36. Write-through caching updates main memory immediately upon a cache write, ensuring consistency but increasing memory bus utilization.
+37. Cache coherency protocols maintain consistency across multiple caches in a shared-memory system, using directory-based or snooping mechanisms.
+38. Directory-based coherence tracks which caches hold copies of a memory block, allowing targeted invalidation messages to be sent.
+39. Snooping coherence monitors bus transactions to detect conflicts, requiring all caches to listen to every memory request.
+40. False sharing occurs when multiple threads modify different variables within the same cache line, causing unnecessary invalidations and synchronization overhead.
+41. Padding techniques align thread-local data to separate cache lines, preventing false sharing in multithreaded applications.
+42. Non-temporal stores bypass the cache hierarchy, writing directly to main memory for streaming data that will not be reused.
+43. Temporal locality refers to the tendency of recently accessed data to be accessed again soon, justifying the use of caches.
+44. Spatial locality refers to the tendency of accessing nearby memory locations, enabling efficient use of cache lines and prefetching.
+45. Locality of reference is a fundamental principle underpinning hierarchical memory designs, where frequently used data resides in faster storage.
+46. Working set size represents the minimum amount of memory required to keep a program running efficiently without frequent page faults.
+47. Page fault handling incurs significant latency when accessing pages not present in physical memory, requiring disk I/O and context switching.
+48. Demand paging loads pages into memory only when they are first accessed, reducing initial memory footprint.
+49. Pre-paging loads likely-to-be-needed pages before they are requested, mitigating page fault latency at the cost of increased I/O activity.
+50. Transparent huge pages reduce TLB miss rates by using larger page sizes, improving address translation efficiency.
+51. Translation Lookaside Buffer (TLB) caches virtual-to-physical address mappings, accelerating memory access by avoiding page table walks.
+52. TLB shootdowns invalidate cached translations after memory mapping changes, introducing latency spikes during dynamic memory management.
+53. Address space layout randomization (ASLR) randomizes memory regions to prevent predictable memory corruption attacks.
+54. Stack canaries insert guard values on the stack to detect buffer overflows, providing a basic layer of security.
+55. Heap fragmentation degrades allocator performance over time as free blocks become scattered, increasing search times for suitable allocations.
+56. Slab allocators reuse pre-allocated objects of fixed sizes, reducing fragmentation and allocation overhead for small objects.
+57. Bump allocation pointers advance through a contiguous memory region, offering extremely fast allocation for short-lived objects.
+58. Garbage collection pauses execution to reclaim unreachable memory, introducing latency spikes that can impact real-time systems.
+59. Incremental garbage collection spreads the collection work over time, reducing pause duration at the cost of increased total work.
+60. Reference counting tracks the number of references to each object, freeing memory immediately when the count reaches zero.
+61. Cycle detection algorithms identify circular references in reference-counted systems, preventing memory leaks from unreclaimable cycles.
+62. Object pooling reuses pre-allocated objects to avoid the overhead of frequent allocation and deallocation cycles.
+63. Memory arenas provide isolated regions for bulk allocation, simplifying cleanup by freeing entire regions at once.
+64. Memory pools specialize in allocating objects of a specific type, optimizing metadata storage and alignment for that type.
+65. Lock-free data structures guarantee forward progress without blocking threads, using atomic operations to coordinate access.
+66. Wait-free data structures guarantee that each thread completes its operation in a bounded number of steps, providing stronger progress guarantees.
+67. Atomic operations execute indivisibly, ensuring that concurrent modifications do not result in inconsistent states.
+68. Compare-and-swap (CAS) is a fundamental atomic instruction used to implement lock-free algorithms, comparing memory value and updating if unchanged.
+69. Load-linked/Store-conditional pairs provide another mechanism for atomicity, reserving a memory location for modification.
+70. Memory ordering constraints define the visibility of writes across processors, ensuring consistent observation of concurrent events.
+71. Sequential consistency provides the strongest memory model, where all processors see operations in the same order as specified by the program.
+72. Relaxed memory models allow reordering of operations for performance, requiring explicit fences to enforce necessary ordering.
+73. Acquire semantics ensure that subsequent memory operations are not reordered before the acquire operation.
+74. Release semantics ensure that preceding memory operations are visible to other processors before the release operation completes.
+75. Volatile variables prevent compiler optimizations such as caching in registers or reordering, ensuring direct memory access.
+76. Compiler barriers inhibit reordering of instructions across the barrier, maintaining program order for specific sections.
+77. Hardware barriers synchronize memory operations, ensuring that prior operations complete before subsequent ones begin.
+78. Fence instructions act as synchronization points, enforcing ordering constraints between memory accesses.
+79. Spin locks busy-wait for lock acquisition, consuming CPU cycles but avoiding context switch overhead.
+80. Adaptive spin locks transition to sleeping after a certain wait time, balancing CPU usage against latency.
+81. Mutexes provide mutual exclusion

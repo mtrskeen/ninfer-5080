@@ -1,0 +1,529 @@
+```python
+# pyproject.toml
+[build-system]
+requires = ["setuptools>=61.0"]
+build-backend = "setuptools.backends._legacy:_Backend"
+
+[project]
+name = "deterministic-job-runner"
+version = "1.0.0"
+description = "A deterministic asynchronous job runner with atomic state persistence, GPU job enforcement, and structured JSONL event streaming."
+readme = "README.md"
+requires-python = ">=3.11"
+license = { text = "MIT" }
+authors = [
+    { name = "Dev Team", email = "dev@example.com" }
+]
+classifiers = [
+    "Programming Language :: Python :: 3",
+    "Programming Language :: Python :: 3.11",
+    "License :: OSI Approved :: MIT License",
+    "Operating System :: OS Independent",
+]
+dependencies = []
+
+[project.optional-dependencies]
+dev = [
+    "pytest>=7.0",
+    "pytest-asyncio>=0.21",
+]
+
+[tool.setuptools.packages.find]
+where = ["."]
+include = ["job_runner*"]
+
+[tool.pytest.ini_options]
+asyncio_mode = "auto"
+testpaths = ["tests"]
+```
+
+```python
+# job_runner/__init__.py
+"""Deterministic asynchronous job runner package."""
+
+from .runner import JobRunner
+from .manifest import ManifestLoader
+from .state_store import StateStore
+from .events import EventStream, EventType
+from .secrets import SecretRedactor
+
+__all__ = [
+    "JobRunner",
+    "ManifestLoader",
+    "StateStore",
+    "EventStream",
+    "EventType",
+    "SecretRedactor",
+]
+```
+
+```python
+# job_runner/manifest.py
+"""Manifest loading and validation for the job runner."""
+
+import json
+import os
+from dataclasses import dataclass, field
+from typing import Any, Dict, List, Optional
+
+
+@dataclass
+class JobSpec:
+    """Specification for a single job."""
+    job_id: str
+    name: str
+    command: List[str]
+    env: Dict[str, str] = field(default_factory=dict)
+    gpu_required: bool = False
+    timeout_seconds: float = 300.0
+    max_retries: int = 0
+    metadata: Dict[str, Any] = field(default_factory=dict)
+
+    def to_dict(self) -> Dict[str, Any]:
+        return {
+            "job_id": self.job_id,
+            "name": self.name,
+            "command": self.command,
+            "env": self.env,
+            "gpu_required": self.gpu_required,
+            "timeout_seconds": self.timeout_seconds,
+            "max_retries": self.max_retries,
+            "metadata": self.metadata,
+        }
+
+
+@dataclass
+class Manifest:
+    """The full manifest containing all jobs."""
+    version: str
+    jobs: List[JobSpec] = field(default_factory=list)
+    global_env: Dict[str, str] = field(default_factory=dict)
+    secrets: List[str] = field(default_factory=list)  # Environment variable names to redact
+    gpu_job_limit: int = 1  # Maximum concurrent GPU jobs (enforced as 1 by default)
+
+    @classmethod
+    def from_dict(cls, data: Dict[str, Any]) -> "Manifest":
+        """Create a Manifest from a parsed dictionary."""
+        if "version" not in data:
+            raise ValueError("Manifest must include 'version' field")
+
+        jobs_data = data.get("jobs", [])
+        jobs = []
+        for job_data in jobs_data:
+            if "job_id" not in job_data:
+                raise ValueError(f"Each job must have a 'job_id': {job_data}")
+            if "command" not in job_data:
+                raise ValueError(f"Job '{job_data['job_id']}' must have a 'command'")
+
+            jobs.append(JobSpec(
+                job_id=job_data["job_id"],
+                name=job_data.get("name", job_data["job_id"]),
+                command=job_data["command"],
+                env=job_data.get("env", {}),
+                gpu_required=job_data.get("gpu_required", False),
+                timeout_seconds=float(job_data.get("timeout_seconds", 300.0)),
+                max_retries=int(job_data.get("max_retries", 0)),
+                metadata=job_data.get("metadata", {}),
+            ))
+
+        return cls(
+            version=data["version"],
+            jobs=jobs,
+            global_env=data.get("global_env", {}),
+            secrets=data.get("secrets", []),
+            gpu_job_limit=int(data.get("gpu_job_limit", 1)),
+        )
+
+    def get_job_by_id(self, job_id: str) -> Optional[JobSpec]:
+        """Get a job specification by its ID."""
+        for job in self.jobs:
+            if job.job_id == job_id:
+                return job
+        return None
+
+
+class ManifestLoader:
+    """Loads and validates job manifests from JSON files."""
+
+    def __init__(self, manifest_path: str):
+        self.manifest_path = manifest_path
+
+    def load(self) -> Manifest:
+        """Load the manifest from the specified path."""
+        if not os.path.exists(self.manifest_path):
+            raise FileNotFoundError(f"Manifest not found: {self.manifest_path}")
+
+        with open(self.manifest_path, "r", encoding="utf-8") as f:
+            data = json.load(f)
+
+        manifest = Manifest.from_dict(data)
+
+        # Validate GPU job limit is exactly 1
+        if manifest.gpu_job_limit != 1:
+            raise ValueError(
+                f"GPU job limit must be 1, got {manifest.gpu_job_limit}. "
+                "Only one active GPU job is allowed at a time."
+            )
+
+        # Check for duplicate job IDs
+        seen_ids = set()
+        for job in manifest.jobs:
+            if job.job_id in seen_ids:
+                raise ValueError(f"Duplicate job_id: {job.job_id}")
+            seen_ids.add(job.job_id)
+
+        return manifest
+```
+
+```python
+# job_runner/state_store.py
+"""Atomic state persistence for the job runner."""
+
+import json
+import os
+import tempfile
+import shutil
+from dataclasses import dataclass, field
+from enum import Enum
+from typing import Dict, Optional, Any
+from datetime import datetime, timezone
+
+
+class JobStatus(Enum):
+    PENDING = "pending"
+    RUNNING = "running"
+    COMPLETED = "completed"
+    FAILED = "failed"
+    CANCELLED = "cancelled"
+
+
+@dataclass
+class JobState:
+    """State of a single job."""
+    job_id: str
+    status: JobStatus = JobStatus.PENDING
+    started_at: Optional[str] = None
+    finished_at: Optional[str] = None
+    exit_code: Optional[int] = None
+    error_message: Optional[str] = None
+    retry_count: int = 0
+    output: str = ""
+
+    def to_dict(self) -> Dict[str, Any]:
+        return {
+            "job_id": self.job_id,
+            "status": self.status.value,
+            "started_at": self.started_at,
+            "finished_at": self.finished_at,
+            "exit_code": self.exit_code,
+            "error_message": self.error_message,
+            "retry_count": self.retry_count,
+            "output": self.output,
+        }
+
+    @classmethod
+    def from_dict(cls, data: Dict[str, Any]) -> "JobState":
+        return cls(
+            job_id=data["job_id"],
+            status=JobStatus(data.get("status", "pending")),
+            started_at=data.get("started_at"),
+            finished_at=data.get("finished_at"),
+            exit_code=data.get("exit_code"),
+            error_message=data.get("error_message"),
+            retry_count=data.get("retry_count", 0),
+            output=data.get("output", ""),
+        )
+
+
+@dataclass
+class RunnerState:
+    """Overall runner state."""
+    version: str = "1.0"
+    jobs: Dict[str, JobState] = field(default_factory=dict)
+    created_at: str = ""
+    last_updated: str = ""
+
+    def to_dict(self) -> Dict[str, Any]:
+        return {
+            "version": self.version,
+            "jobs": {jid: js.to_dict() for jid, js in self.jobs.items()},
+            "created_at": self.created_at,
+            "last_updated": self.last_updated,
+        }
+
+    @classmethod
+    def from_dict(cls, data: Dict[str, Any]) -> "RunnerState":
+        jobs = {}
+        for jid, js_data in data.get("jobs", {}).items():
+            jobs[jid] = JobState.from_dict(js_data)
+
+        return cls(
+            version=data.get("version", "1.0"),
+            jobs=jobs,
+            created_at=data.get("created_at", ""),
+            last_updated=data.get("last_updated", ""),
+        )
+
+
+class StateStore:
+    """
+    Manages atomic state persistence.
+    
+    Uses write-to-temp-then-rename pattern to ensure atomicity.
+    State is persisted after every significant state change.
+    """
+
+    def __init__(self, state_dir: str):
+        self.state_dir = state_dir
+        self.state_file = os.path.join(state_dir, "state.json")
+        self._state: Optional[RunnerState] = None
+
+    def _ensure_dir(self):
+        """Ensure the state directory exists."""
+        os.makedirs(self.state_dir, exist_ok=True)
+
+    def initialize(self, manifest_version: str) -> RunnerState:
+        """Initialize a fresh state store."""
+        now = datetime.now(timezone.utc).isoformat()
+        self._state = RunnerState(
+            version=manifest_version,
+            jobs={},
+            created_at=now,
+            last_updated=now,
+        )
+        self._persist()
+        return self._state
+
+    def load_or_initialize(self, manifest_version: str, job_ids: list) -> RunnerState:
+        """
+        Load existing state if present, otherwise initialize.
+        Jobs that are already completed will retain their completed status (resume support).
+        """
+        if os.path.exists(self.state_file):
+            try:
+                with open(self.state_file, "r", encoding="utf-8") as f:
+                    data = json.load(f)
+                self._state = RunnerState.from_dict(data)
+
+                # Ensure all jobs from manifest are tracked
+                for jid in job_ids:
+                    if jid not in self._state.jobs:
+                        self._state.jobs[jid] = JobState(job_id=jid, status=JobStatus.PENDING)
+
+                # Update last_updated
+                self._state.last_updated = datetime.now(timezone.utc).isoformat()
+                self._persist()
+                return self._state
+            except (json.JSONDecodeError, KeyError, TypeError):
+                # Corrupted state file; start fresh but preserve completed jobs if possible
+                pass
+
+        # Initialize fresh
+        now = datetime.now(timezone.utc).isoformat()
+        self._state = RunnerState(
+            version=manifest_version,
+            jobs={jid: JobState(job_id=jid, status=JobStatus.PENDING) for jid in job_ids},
+            created_at=now,
+            last_updated=now,
+        )
+        self._persist()
+        return self._state
+
+    @property
+    def state(self) -> RunnerState:
+        """Get current state (must be initialized or loaded first)."""
+        if self._state is None:
+            raise RuntimeError("State store not initialized. Call initialize() or load_or_initialize() first.")
+        return self._state
+
+    def update_job_status(
+        self,
+        job_id: str,
+        status: JobStatus,
+        exit_code: Optional[int] = None,
+        error_message: Optional[str] = None,
+        output: str = "",
+    ):
+        """Update the status of a specific job and persist atomically."""
+        if self._state is None:
+            raise RuntimeError("State store not initialized.")
+
+        if job_id not in self._state.jobs:
+            raise ValueError(f"Unknown job_id: {job_id}")
+
+        job_state = self._state.jobs[job_id]
+        now = datetime.now(timezone.utc).isoformat()
+
+        job_state.status = status
+        if status == JobStatus.RUNNING and job_state.started_at is None:
+            job_state.started_at = now
+        if status in (JobStatus.COMPLETED, JobStatus.FAILED, JobStatus.CANCELLED):
+            job_state.finished_at = now
+            if exit_code is not None:
+                job_state.exit_code = exit_code
+            if error_message is not None:
+                job_state.error_message = error_message
+            if output:
+                job_state.output = output
+
+        self._state.last_updated = now
+        self._persist()
+
+    def increment_retry(self, job_id: str):
+        """Increment retry count for a job."""
+        if self._state is None:
+            raise RuntimeError("State store not initialized.")
+
+        if job_id not in self._state.jobs:
+            raise ValueError(f"Unknown job_id: {job_id}")
+
+        self._state.jobs[job_id].retry_count += 1
+        self._state.last_updated = datetime.now(timezone.utc).isoformat()
+        self._persist()
+
+    def _persist(self):
+        """Atomically persist state to disk using temp-file + rename."""
+        if self._state is None:
+            return
+
+        self._ensure_dir()
+
+        # Write to a temporary file in the same directory, then atomically rename
+        fd, tmp_path = tempfile.mkstemp(
+            dir=self.state_dir,
+            prefix=".state_",
+            suffix=".tmp",
+        )
+        try:
+            with os.fdopen(fd, "w", encoding="utf-8") as f:
+                json.dump(self._state.to_dict(), f, indent=2)
+                f.flush()
+                os.fsync(f.fileno())
+
+            # Atomic rename (POSIX guarantees this is atomic on same filesystem)
+            os.replace(tmp_path, self.state_file)
+        except Exception:
+            # Clean up temp file on failure
+            if os.path.exists(tmp_path):
+                os.unlink(tmp_path)
+            raise
+
+    def get_pending_jobs(self) -> list:
+        """Get list of job IDs that are pending and need to run."""
+        if self._state is None:
+            return []
+        return [
+            jid for jid, js in self._state.jobs.items()
+            if js.status == JobStatus.PENDING
+        ]
+
+    def get_completed_jobs(self) -> list:
+        """Get list of job IDs that have completed successfully."""
+        if self._state is None:
+            return []
+        return [
+            jid for jid, js in self._state.jobs.items()
+            if js.status == JobStatus.COMPLETED
+        ]
+
+    def has_active_gpu_job(self) -> bool:
+        """Check if there's currently an active (running) GPU job."""
+        if self._state is None:
+            return False
+        # This would need access to job specs to know which are GPU jobs
+        # For now, we track this via the runner's internal tracking
+        return getattr(self, "_active_gpu_job_id", None) is not None
+
+    def set_active_gpu_job(self, job_id: Optional[str]):
+        """Track which GPU job is currently active (for enforcement)."""
+        self._active_gpu_job_id = job_id
+```
+
+```python
+# job_runner/events.py
+"""Structured JSONL event streaming for the job runner."""
+
+import json
+import sys
+import os
+from dataclasses import dataclass, field
+from enum import Enum
+from typing import Any, Dict, Optional, TextIO
+from datetime import datetime, timezone
+
+
+class EventType(Enum):
+    RUNNER_START = "runner_start"
+    RUNNER_STOP = "runner_stop"
+    JOB_STARTED = "job_started"
+    JOB_COMPLETED = "job_completed"
+    JOB_FAILED = "job_failed"
+    JOB_CANCELLED = "job_cancelled"
+    JOB_RETRYING = "job_retrying"
+    STATE_PERSISTED = "state_persisted"
+    ERROR = "error"
+    INFO = "info"
+
+
+@dataclass
+class Event:
+    """A single structured event."""
+    event_type: EventType
+    timestamp: str
+    message: str
+    job_id: Optional[str] = None
+    data: Dict[str, Any] = field(default_factory=dict)
+
+    def to_dict(self) -> Dict[str, Any]:
+        d = {
+            "event_type": self.event_type.value,
+            "timestamp": self.timestamp,
+            "message": self.message,
+        }
+        if self.job_id is not None:
+            d["job_id"] = self.job_id
+        if self.data:
+            d["data"] = self.data
+        return d
+
+    def to_jsonl(self) -> str:
+        return json.dumps(self.to_dict(), separators=(",", ":"), ensure_ascii=False)
+
+
+class EventStream:
+    """
+    Streams structured events as JSONL lines to a file or stdout.
+    Events are written immediately for real-time observability.
+    """
+
+    def __init__(
+        self,
+        output_path: Optional[str] = None,
+        use_stdout: bool = True,
+        redactor: Optional["SecretRedactor"] = None,
+    ):
+        self.output_path = output_path
+        self.use_stdout = use_stdout
+        self.redactor = redactor
+        self._file_handle: Optional[TextIO] = None
+
+        if output_path:
+            os.makedirs(os.path.dirname(output_path) or ".", exist_ok=True)
+            self._file_handle = open(output_path, "a", encoding="utf-8")
+
+    def _redact_text(self, text: str) -> str:
+        """Apply secret redaction to text if a redactor is configured."""
+        if self.redactor is not None:
+            return self.redactor.redact(text)
+        return text
+
+    def emit(
+        self,
+        event_type: EventType,
+        message: str,
+        job_id: Optional[str] = None,
+        data: Optional[Dict[str, Any]] = None,
+    ) -> Event:
+        """Emit a single event to all configured outputs."""
+        timestamp = datetime.now(timezone.utc).isoformat()
+        event =

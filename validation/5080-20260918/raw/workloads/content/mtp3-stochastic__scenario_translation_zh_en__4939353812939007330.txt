@@ -1,0 +1,61 @@
+**Part 1: Operational Boundaries**
+The system services only one active request at a time, with all model state exclusively owned by a single execution process. This constraint is not a temporary defect but a deliberate product decision for single-GPU local inference. It allows the memory planner to pre-determine workspace, cache, and graph execution addresses, and makes state transitions for cancellation, failure, and recovery easier to verify.
+
+**Part 2: Prefill**
+Input first undergoes template rendering and tokenization, then enters the model in fixed-size blocks. Each block reads previously committed state and atomically advances the frontier. Timing must distinguish host preparation, visual preprocessing, text prefill, and the first output token; file reading or model loading must not be mixed into throughput metrics.
+
+**Part 3: Decoding**
+Standard decoding commits one token per round, while speculative decoding can verify multiple candidates and commit a contiguous prefix. Regardless of how many candidates are accepted, public outputs, KV cache, recurrent state, and counters must correspond to the same committed position; no partially updated state may remain.
+
+**Part 4: Long Context**
+As context grows, latency is jointly determined by fixed weight reads and continuously growing attention cache reads. Reports should provide absolute speed, relative retention rate, and actual prompt token count, and record cache format, maximum capacity, sampler, and graph execution status.
+
+**Part 5: Reproducibility**
+Stable inputs must be saved as the actual message files sent, with source and token counts recorded. Formal runs must not involve ad-hoc web downloads, random question selection, or deletion of slower samples. Every number must be traceable back to a specific model, command, input, and service log.
+
+**Part 6: Interpretation of Results**
+A single isolated fastest run cannot prove stable performance, nor can a single high acceptance-rate text represent all output scenarios. Code, narrative, translation, and structured content have different token distributions and should be presented separately rather than merged into a meaningless overall average.
+
+***
+
+### Chinese-English Glossary
+
+| # | Chinese Term | English Translation | Notes/Context |
+|---|---|---|---|
+| 1 | 运行边界 | Operational Boundaries | System scope and constraints |
+| 2 | 活动请求 | Active Request | Currently processed request |
+| 3 | 模型状态 | Model State | Internal data structures of the LLM |
+| 4 | 执行程序 | Execution Process | The process handling inference |
+| 5 | 单卡本地推理 | Single-GPU Local Inference | Running on one local GPU |
+| 6 | 内存规划器 | Memory Planner | Component managing VRAM allocation |
+| 7 | 工作区 | Workspace | Allocated memory region for computation |
+| 8 | 缓存 | Cache | Reusable memory buffers (e.g., KV cache) |
+| 9 | 图执行地址 | Graph Execution Address | Memory pointers for compiled compute graphs |
+| 10 | 状态转换 | State Transitions | Changes between operational states |
+| 11 | 预填充 | Prefill | Initial processing of full input prompt |
+| 12 | 模板渲染 | Template Rendering | Converting templates to final prompts |
+| 13 | 分词 | Tokenization | Splitting text into tokens |
+| 14 | 固定大小的块 | Fixed-size Blocks | Chunks of equal size for batch processing |
+| 15 | 原子地推进前沿 | Atomically Advance the Frontier | Ensure consistent state update without partial writes |
+| 16 | 主机准备 | Host Preparation | CPU-side data preparation before GPU inference |
+| 17 | 视觉预处理 | Visual Preprocessing | Image/video encoding before model input |
+| 18 | 第一枚输出 token | First Output Token | Time-to-first-token (TTFT) metric |
+| 19 | 吞吐量 | Throughput | Tokens generated per second |
+| 20 | 解码 | Decoding | Autoregressive generation phase |
+| 21 | 推测解码 | Speculative Decoding | Technique using draft model for speedup |
+| 22 | 候选 | Candidates | Proposed tokens from draft model |
+| 23 | 连续前缀 | Contiguous Prefix | Valid sequence of accepted tokens |
+| 24 | KV 缓存 | KV Cache | Key-Value cache for attention mechanism |
+| 25 | 循环状态 | Recurrent State | Hidden state in RNN-style architectures |
+| 26 | 计数器 | Counters | Metrics tracking steps/tokens |
+| 27 | 长上下文 | Long Context | Handling of large input sequences |
+| 28 | 注意力缓存读取 | Attention Cache Reads | Memory access pattern for attention |
+| 29 | 绝对速度 | Absolute Speed | Raw speed metric (e.g., tok/s) |
+| 30 | 相对保留率 | Relative Retention Rate | Performance ratio vs. baseline |
+| 31 | 采样器 | Sampler | Algorithm selecting next token (e.g., top-k) |
+| 32 | 消息文件 | Message Files | Serialized input prompts |
+| 33 | 服务日志 | Service Logs | Runtime logs for debugging/tracing |
+| 34 | 结果解释 | Interpretation of Results | Analysis of benchmark outcomes |
+| 35 | 孤立的最快运行 | Isolated Fastest Run | Best-case single trial |
+| 36 | 高接受率文本 | High Acceptance-Rate Text | Text where speculative decoding succeeds often |
+| 37 | 结构化内容 | Structured Content | JSON, tables, code, etc. |

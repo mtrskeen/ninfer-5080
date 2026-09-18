@@ -1,0 +1,76 @@
+2. In multi-head attention mechanisms, the parallelism of head computations allows for higher memory bandwidth utilization compared to sequential single-head processing.
+3. Quantization-aware training reduces the dynamic range of activations, allowing lower-precision arithmetic units to process data with fewer bit-widths per operation.
+4. The critical path delay in a deep neural network layer is often determined by the longest dependency chain in the convolutional filter weights.
+5. Double buffering techniques hide the latency of data transfers between high-bandwidth memory and on-chip SRAM by prefetching the next tile while processing the current one.
+6. Sparse matrix-vector multiplication algorithms exploit structural zeros to skip unnecessary multiply-accumulate operations, significantly reducing energy consumption.
+7. Pipeline stall cycles occur when a downstream stage cannot accept new data due to resource contention or backpressure from subsequent stages.
+8. Weight sharing across time steps in recurrent networks reduces parameter count but introduces temporal dependencies that complicate static scheduling.
+9. The roofline model illustrates the transition point where a computation becomes compute-bound rather than memory-bound based on its arithmetic intensity.
+10. Non-uniform memory access (NUMA) architectures require careful task placement to minimize remote memory accesses that incur higher latency penalties.
+11. Cache partitioning strategies prevent interference between concurrent kernels by assigning exclusive sets of cache lines to specific threads or cores.
+12. Dynamic voltage and frequency scaling (DVFS) adjusts processor operating points in real-time to match workload intensity, optimizing energy-delay product.
+13. Vectorized instruction sets process multiple data elements per clock cycle, increasing throughput for element-wise operations like ReLU or sigmoid activation.
+14. Memory hierarchy depth determines the average access time, with register files offering the lowest latency followed by L1, L2, and main memory.
+15. Compiler auto-vectorization transforms scalar loops into vector instructions when loop iterations are independent and alignment constraints are met.
+16. Branch prediction accuracy impacts pipeline efficiency, as mispredicts flush the instruction stream and introduce bubble cycles into the execution flow.
+17. Tensor cores perform matrix multiply-accumulate operations on fixed-point data, providing massive parallelism for dense linear algebra tasks.
+18. Data layout transposition changes the memory access pattern from row-major to column-major to improve spatial locality in cache lines.
+19. Pre-fetching algorithms predict future memory addresses based on stride patterns, loading data into cache before it is explicitly requested by the processor.
+20. Instruction-level parallelism (ILP) exploits independent operations within a basic block to issue multiple instructions per cycle on superscalar architectures.
+21. Thread-level parallelism (TLP) distributes work across multiple hardware threads, hiding memory latency through context switching and interleaved execution.
+22. Power gating isolates unused logic blocks from the power supply rail, eliminating static leakage current during idle periods.
+23. Clock gating disables the clock signal to flip-flops in inactive sub-blocks, reducing dynamic power consumption proportional to switching activity.
+24. Memory compression stores data in a compressed format, increasing effective capacity and reducing bandwidth requirements for sparse or low-entropy data.
+25. ECC (Error-Correcting Code) memory detects and corrects single-bit errors, ensuring data integrity in mission-critical computing environments.
+26. Redundant array of independent disks (RAID) levels provide fault tolerance and performance improvements through striping, mirroring, or parity schemes.
+27. Network interface cards (NICs) offload packet processing tasks such as checksum calculation and segmentation, freeing CPU cycles for application logic.
+28. Remote Direct Memory Access (RDMA) protocols allow data to be transferred directly between memories of remote hosts without involving their CPUs.
+29. InfiniBand fabric provides low-latency, high-throughput interconnects for HPC clusters using credit-based flow control and reliable connection management.
+30. Ethernet congestion control algorithms adjust transmission rates based on loss signals to prevent buffer overflows in shared network switches.
+31. Optical interconnects use photonic links to transmit data at gigabit speeds with lower energy per bit compared to electrical copper traces.
+32. SerDes (Serializer/Deserializer) interfaces convert parallel data streams to high-speed serial streams for efficient transmission over long distances.
+33. CXL (Compute Express Link) protocol enables coherent cache sharing between CPUs, accelerators, and memory devices over a PCIe physical layer.
+34. NVMe over Fabrics extends the NVMe protocol to remote storage arrays, allowing host controllers to access remote SSDs with low latency.
+35. Storage class memory (SCM) offers persistence and byte-addressability, bridging the gap between volatile DRAM and non-volatile flash storage.
+36. Zoned storage devices expose logical zones that must be written sequentially, preventing random write amplification and wear imbalance in flash.
+37. Garbage collection in SSD firmware reclaims free blocks by moving valid data, which incurs overhead that increases with drive utilization.
+38. Write amplification factor measures the ratio of actual bytes written to NAND cells versus user data bytes, impacting endurance and latency.
+39. TRIM commands inform the SSD controller about deleted file system blocks, allowing early garbage collection and reduced write latency.
+40. Journaling file systems maintain a log of metadata changes to ensure consistency after crashes, at the cost of additional write I/O.
+41. Copy-on-write (CoW) file systems modify data by copying blocks to new locations, enabling snapshotting and atomic updates without locking.
+42. Log-structured merge trees (LSM-trees) optimize write-heavy workloads by appending data to sorted runs and merging them periodically.
+43. B+ trees provide balanced search structures for disk-resident databases, minimizing I/O seeks by maximizing fan-out at internal nodes.
+44. Hash indexes offer O(1) lookup performance for equality queries but degrade in range scan scenarios compared to tree-based structures.
+45. Bloom filters provide space-efficient probabilistic membership testing, used to quickly determine if an item is not in a set.
+46. Consistent hashing distributes keys across distributed nodes using a ring topology, minimizing data migration when nodes join or leave.
+47. Quorum protocols ensure consensus in distributed systems by requiring a majority of replicas to acknowledge writes and reads.
+48. Paxos algorithm achieves consensus among unreliable nodes by using proposers, acceptors, and learners in multi-phase communication.
+49. Raft consensus protocol simplifies leader election and log replication, making distributed state machines easier to implement and debug.
+50. Vector clocks track causal ordering of events in distributed systems, detecting conflicts that occurred concurrently in different replicas.
+51. Conflict-free replicated data types (CRDTs) design data structures that converge to the same state regardless of the order of operations.
+52. Operational transformation (OT) merges concurrent edits in collaborative editors by transforming operations to account for others' changes.
+53. Event sourcing stores all state changes as a sequence of immutable events, allowing full audit trails and state reconstruction.
+54. Command query responsibility segregation (CQRS) separates read and write models, optimizing each for specific access patterns.
+55. Domain-driven design (DDD) organizes software architecture around business domains, aligning technical boundaries with business concepts.
+56. Microservices architecture decomposes applications into small, independently deployable services communicating via lightweight APIs.
+57. Service mesh infrastructure handles service-to-service communication concerns like TLS, retries, and observability outside of application code.
+58. Container orchestration platforms automate deployment, scaling, and management of containerized applications across clustered hosts.
+59. Kubernetes pods group containers that share network namespaces and storage, deployed as atomic units for scheduling.
+60. Horizontal pod autoscalers adjust replica counts based on custom metrics like CPU utilization or request rate to maintain performance.
+61. Node affinity rules constrain pod scheduling to nodes with specific labels, ensuring resources match application requirements.
+62. Taints and tolerations prevent pods from being scheduled on unsuitable nodes until they explicitly tolerate the node's conditions.
+63. Resource quotas limit aggregate compute and storage consumption per namespace, preventing noisy neighbors from degrading cluster performance.
+64. Limit ranges enforce minimum and maximum resource requests and limits for individual containers within a namespace.
+65. Priority classes assign scheduling priority to pods, ensuring critical workloads preempt lower-priority ones during resource contention.
+66. Preemption mechanisms evict lower-priority pods to free resources for higher-priority pending pods on overloaded nodes.
+67. Eviction thresholds trigger node-level actions like draining pods when memory or disk pressure exceeds defined safety margins.
+68. Pod disruption budgets specify the minimum number of replicas that must remain available during voluntary disruptions like node maintenance.
+69. Rolling updates replace old pods with new versions gradually, ensuring zero downtime by maintaining availability throughout the update.
+70. Blue-green deployments run two identical production environments, shifting traffic instantly to the new version to enable rapid rollback.
+71. Canary releases expose a small percentage of traffic to the new version, monitoring metrics before full rollout to detect regressions.
+72. Feature flags decouple code deployment from feature release, allowing features to be toggled on or off without redeployment.
+73. A/B testing frameworks randomly assign users to variants of a feature, measuring statistical significance of impact on key metrics.
+74. Multi-armed bandit algorithms dynamically allocate traffic to variants, balancing exploration of new options with exploitation of known best performers.
+75. Circuit breakers stop calling a failing downstream service after a threshold of failures, preventing cascading failures across the system.
+76. Bulkhead patterns isolate components so that failure in one section does not consume resources needed by other sections.
+7

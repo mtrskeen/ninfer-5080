@@ -1,0 +1,138 @@
+SET client_min_messages = warning;
+SET search_path TO public;
+
+DROP FUNCTION IF EXISTS upsert_run_metrics CASCADE;
+DROP VIEW IF EXISTS v_model_fixture_summary CASCADE;
+DROP VIEW IF EXISTS v_long_context_analysis CASCADE;
+DROP TABLE IF EXISTS request_metrics CASCADE;
+DROP TABLE IF EXISTS runs CASCADE;
+DROP TABLE IF EXISTS fixtures CASCADE;
+DROP TABLE IF EXISTS models CASCADE;
+
+CREATE TABLE models (
+    model_id SERIAL PRIMARY KEY,
+    name VARCHAR(100) NOT NULL UNIQUE,
+    family VARCHAR(50) NOT NULL,
+    parameter_count BIGINT CHECK (parameter_count > 0),
+    context_length INT CHECK (context_length > 0),
+    created_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP
+);
+
+CREATE TABLE fixtures (
+    fixture_id SERIAL PRIMARY KEY,
+    name VARCHAR(100) NOT NULL UNIQUE,
+    kind VARCHAR(50) NOT NULL CHECK (kind IN ('short', 'medium', 'long', 'code')),
+    token_count INT CHECK (token_count >= 0),
+    description TEXT
+);
+
+CREATE TABLE runs (
+    run_id SERIAL PRIMARY KEY,
+    model_id INT NOT NULL REFERENCES models(model_id),
+    fixture_id INT NOT NULL REFERENCES fixtures(fixture_id),
+    started_at TIMESTAMP NOT NULL DEFAULT CURRENT_TIMESTAMP,
+    finished_at TIMESTAMP,
+    status VARCHAR(20) NOT NULL DEFAULT 'completed' CHECK (status IN ('completed', 'failed', 'timeout')),
+    config_json JSONB DEFAULT '{}'::jsonb
+);
+
+CREATE TABLE request_metrics (
+    metric_id SERIAL PRIMARY KEY,
+    run_id INT NOT NULL REFERENCES runs(run_id),
+    timestamp TIMESTAMP NOT NULL DEFAULT CURRENT_TIMESTAMP,
+    input_tokens INT CHECK (input_tokens >= 0),
+    output_tokens INT CHECK (output_tokens >= 0),
+    latency_ms FLOAT CHECK (latency_ms >= 0),
+    mtp_accepted BOOL DEFAULT FALSE,
+    error_code VARCHAR(50)
+);
+
+CREATE INDEX idx_runs_model ON runs(model_id);
+CREATE INDEX idx_runs_fixture ON runs(fixture_id);
+CREATE INDEX idx_metrics_run ON request_metrics(run_id);
+CREATE INDEX idx_metrics_timestamp ON request_metrics(timestamp);
+CREATE INDEX idx_models_name ON models(name);
+CREATE INDEX idx_fixtures_kind ON fixtures(kind);
+
+CREATE OR REPLACE FUNCTION upsert_run_metrics(
+    p_run_id INT,
+    p_input_tokens INT,
+    p_output_tokens INT,
+    p_latency_ms FLOAT,
+    p_mtp_accepted BOOL
+) RETURNS VOID AS $$
+BEGIN
+    INSERT INTO request_metrics (run_id, input_tokens, output_tokens, latency_ms, mtp_accepted)
+    VALUES (p_run_id, p_input_tokens, p_output_tokens, p_latency_ms, p_mtp_accepted)
+    ON CONFLICT (run_id) DO UPDATE SET
+        input_tokens = EXCLUDED.input_tokens,
+        output_tokens = EXCLUDED.output_tokens,
+        latency_ms = EXCLUDED.latency_ms,
+        mtp_accepted = EXCLUDED.mtp_accepted;
+END;
+$$ LANGUAGE plpgsql;
+
+INSERT INTO models (name, family, parameter_count, context_length) VALUES
+('Llama-3-8B-Instruct', 'Llama', 8000000000, 8192),
+('Mistral-7B-Instruct-v0.3', 'Mistral', 7000000000, 32768);
+
+INSERT INTO fixtures (name, kind, token_count, description) VALUES
+('chat_short_1', 'short', 50, 'Simple greeting and short Q&A'),
+('chat_medium_1', 'medium', 500, 'Multi-turn conversation with moderate detail'),
+('code_gen_1', 'code', 300, 'Python function generation task'),
+('summary_long_1', 'long', 4000, 'Long article summarization task');
+
+INSERT INTO runs (model_id, fixture_id, started_at, finished_at, status, config_json) VALUES
+(1, 1, '2024-01-01 10:00:00', '2024-01-01 10:00:05', 'completed', '{"temp": 0.7}'),
+(1, 1, '2024-01-01 10:01:00', '2024-01-01 10:01:04', 'completed', '{"temp": 0.7}'),
+(1, 1, '2024-01-01 10:02:00', '2024-01-01 10:02:06', 'completed', '{"temp": 0.7}'),
+(1, 1, '2024-01-01 10:03:00', '2024-01-01 10:03:03', 'completed', '{"temp": 0.7}'),
+(1, 1, '2024-01-01 10:04:00', '2024-01-01 10:04:05', 'completed', '{"temp": 0.7}'),
+(1, 1, '2024-01-01 10:05:00', '2024-01-01 10:05:04', 'completed', '{"temp": 0.7}'),
+(1, 1, '2024-01-01 10:06:00', '2024-01-01 10:06:05', 'completed', '{"temp": 0.7}'),
+(1, 1, '2024-01-01 10:07:00', '2024-01-01 10:07:03', 'completed', '{"temp": 0.7}'),
+(1, 1, '2024-01-01 10:08:00', '2024-01-01 10:08:05', 'completed', '{"temp": 0.7}'),
+(1, 1, '2024-01-01 10:09:00', '2024-01-01 10:09:04', 'completed', '{"temp": 0.7}'),
+(1, 2, '2024-01-01 11:00:00', '2024-01-01 11:00:15', 'completed', '{"temp": 0.7}'),
+(1, 2, '2024-01-01 11:01:00', '2024-01-01 11:01:14', 'completed', '{"temp": 0.7}'),
+(1, 2, '2024-01-01 11:02:00', '2024-01-01 11:02:16', 'completed', '{"temp": 0.7}'),
+(1, 2, '2024-01-01 11:03:00', '2024-01-01 11:03:15', 'completed', '{"temp": 0.7}'),
+(1, 2, '2024-01-01 11:04:00', '2024-01-01 11:04:14', 'completed', '{"temp": 0.7}'),
+(1, 2, '2024-01-01 11:05:00', '2024-01-01 11:05:15', 'completed', '{"temp": 0.7}'),
+(1, 2, '2024-01-01 11:06:00', '2024-01-01 11:06:16', 'completed', '{"temp": 0.7}'),
+(1, 2, '2024-01-01 11:07:00', '2024-01-01 11:07:14', 'completed', '{"temp": 0.7}'),
+(1, 2, '2024-01-01 11:08:00', '2024-01-01 11:08:15', 'completed', '{"temp": 0.7}'),
+(1, 2, '2024-01-01 11:09:00', '2024-01-01 11:09:15', 'completed', '{"temp": 0.7}'),
+(1, 3, '2024-01-01 12:00:00', '2024-01-01 12:00:20', 'completed', '{"temp": 0.2}'),
+(1, 3, '2024-01-01 12:01:00', '2024-01-01 12:01:19', 'completed', '{"temp": 0.2}'),
+(1, 3, '2024-01-01 12:02:00', '2024-01-01 12:02:21', 'completed', '{"temp": 0.2}'),
+(1, 3, '2024-01-01 12:03:00', '2024-01-01 12:03:20', 'completed', '{"temp": 0.2}'),
+(1, 3, '2024-01-01 12:04:00', '2024-01-01 12:04:19', 'completed', '{"temp": 0.2}'),
+(1, 3, '2024-01-01 12:05:00', '2024-01-01 12:05:20', 'completed', '{"temp": 0.2}'),
+(1, 3, '2024-01-01 12:06:00', '2024-01-01 12:06:21', 'completed', '{"temp": 0.2}'),
+(1, 3, '2024-01-01 12:07:00', '2024-01-01 12:07:20', 'completed', '{"temp": 0.2}'),
+(1, 3, '2024-01-01 12:08:00', '2024-01-01 12:08:19', 'completed', '{"temp": 0.2}'),
+(1, 3, '2024-01-01 12:09:00', '2024-01-01 12:09:20', 'completed', '{"temp": 0.2}'),
+(1, 4, '2024-01-01 13:00:00', '2024-01-01 13:01:30', 'completed', '{"temp": 0.5}'),
+(1, 4, '2024-01-01 13:02:00', '2024-01-01 13:03:25', 'completed', '{"temp": 0.5}'),
+(1, 4, '2024-01-01 13:04:00', '2024-01-01 13:05:35', 'completed', '{"temp": 0.5}'),
+(1, 4, '2024-01-01 13:06:00', '2024-01-01 13:07:30', 'completed', '{"temp": 0.5}'),
+(1, 4, '2024-01-01 13:08:00', '2024-01-01 13:09:40', 'completed', '{"temp": 0.5}'),
+(1, 4, '2024-01-01 13:10:00', '2024-01-01 13:11:35', 'completed', '{"temp": 0.5}'),
+(1, 4, '2024-01-01 13:12:00', '2024-01-01 13:13:30', 'completed', '{"temp": 0.5}'),
+(1, 4, '2024-01-01 13:14:00', '2024-01-01 13:15:45', 'completed', '{"temp": 0.5}'),
+(1, 4, '2024-01-01 13:16:00', '2024-01-01 13:17:35', 'completed', '{"temp": 0.5}'),
+(1, 4, '2024-01-01 13:18:00', '2024-01-01 13:19:30', 'completed', '{"temp": 0.5}'),
+(2, 1, '2024-01-01 10:00:00', '2024-01-01 10:00:04', 'completed', '{"temp": 0.7}'),
+(2, 1, '2024-01-01 10:01:00', '2024-01-01 10:01:03', 'completed', '{"temp": 0.7}'),
+(2, 1, '2024-01-01 10:02:00', '2024-01-01 10:02:05', 'completed', '{"temp": 0.7}'),
+(2, 1, '2024-01-01 10:03:00', '2024-01-01 10:03:02', 'completed', '{"temp": 0.7}'),
+(2, 1, '2024-01-01 10:04:00', '2024-01-01 10:04:04', 'completed', '{"temp": 0.7}'),
+(2, 1, '2024-01-01 10:05:00', '2024-01-01 10:05:03', 'completed', '{"temp": 0.7}'),
+(2, 1, '2024-01-01 10:06:00', '2024-01-01 10:06:05', 'completed', '{"temp": 0.7}'),
+(2, 1, '2024-01-01 10:07:00', '2024-01-01 10:07:02', 'completed', '{"temp": 0.7}'),
+(2, 1, '2024-01-01 10:08:00', '2024-01-01 10:08:04', 'completed', '{"temp": 0.7}'),
+(2, 1, '2024-01-01 10:09:00', '2024-01-01 10:09:03', 'completed', '{"temp": 0.7}'),
+(2, 2, '2024-01-01 11:00:00', '2024-01-01 11:00:12', 'completed', '{"temp": 0.7}'),
+(2, 2, '2024-01-01 11:01:00', '2024-01-01 11:01:11', 'completed', '{"temp": 0.7}'),
+(2, 2, '2024-01-01 11:02:00', '2024-01-01 11:02:13', 'completed', '{"temp": 0.7}'),

@@ -1,0 +1,509 @@
+Below is a complete, runnable Python 3.11 package implementing a deterministic asynchronous job runner that reads a JSON manifest, enforces one active GPU job, persists atomic state, resumes completed work, streams structured JSONL events, handles SIGINT, and redacts configured secrets. All source files are in separate fenced blocks, followed by `pyproject.toml` and the pytest suite.
+
+**Design notes (brief):**
+- **Determinism:** no wall-clock timestamps or random IDs; event ordering derives from a monotonically increasing sequence number; task completion order follows the manifest's declared order.
+- **One active GPU job:** an `asyncio.Semaphore(1)` gates GPU tasks; CPU tasks run concurrently but never hold the GPU slot.
+- **Atomic persistence:** state is written to a temp file then `os.replace()`'d over the target (atomic on POSIX). A "commit" marker records the last fully-persisted event index so recovery can truncate any partially-written trailing event.
+- **Resume:** on start, the runner loads prior state and marks already-completed/failed tasks as terminal, skipping their execution while still emitting replayed events for a consistent stream.
+- **Cancellation:** SIGINT triggers graceful cancellation of the active job; a second SIGINT forces immediate exit.
+- **Redaction:** configured secret values are replaced with a token in every emitted/persisted event via a recursive scrubber.
+
+---
+
+### `gpu_job_runner/__init__.py`
+
+```python
+"""Deterministic asynchronous GPU job runner."""
+
+from .runner import JobRunner, RunnerConfig, TaskSpec, TaskResult
+from .manifest import load_manifest, ManifestError
+from .state import StateStore, StateSnapshot
+from .events import EventStream, EventKind, make_event
+from .redaction import SecretRedactor
+from .errors import CancellationRequested, RunnerError
+
+__all__ = [
+    "JobRunner",
+    "RunnerConfig",
+    "TaskSpec",
+    "TaskResult",
+    "load_manifest",
+    "ManifestError",
+    "StateStore",
+    "StateSnapshot",
+    "EventStream",
+    "EventKind",
+    "make_event",
+    "SecretRedactor",
+    "CancellationRequested",
+    "RunnerError",
+]
+
+__version__ = "0.1.0"
+```
+
+---
+
+### `gpu_job_runner/errors.py`
+
+```python
+"""Exception types for the GPU job runner."""
+
+from __future__ import annotations
+
+
+class RunnerError(Exception):
+    """Base error for all runner failures."""
+
+
+class ManifestError(RunnerError):
+    """Raised when the manifest is malformed or invalid."""
+
+
+class CancellationRequested(RunnerError):
+    """Raised internally to unwind the run loop on SIGINT."""
+
+
+class PersistenceError(RunnerError):
+    """Raised when atomic state persistence fails."""
+```
+
+---
+
+### `gpu_job_runner/redaction.py`
+
+```python
+"""Recursive secret redaction for events and persisted state."""
+
+from __future__ import annotations
+
+from typing import Any
+
+REDACTED_TOKEN = "***REDACTED***"
+
+
+class SecretRedactor:
+    """Replaces occurrences of configured secret values with a token.
+
+    The redactor walks arbitrary nested structures (dicts, lists, tuples,
+    strings) and substitutes any string equal to a registered secret value
+    with :data:`REDACTED_TOKEN`. It also matches substrings within larger
+    strings, which is useful when a secret appears embedded in a log line.
+    """
+
+    def __init__(self, secrets: dict[str, str] | None = None) -> None:
+        # Map each secret *value* to its key name for potential context,
+        # but we only need the set of values for substitution.
+        self._secrets: list[tuple[str, str]] = []
+        if secrets:
+            for key, value in secrets.items():
+                if isinstance(value, str) and value:
+                    self._secrets.append((key, value))
+        # Sort longest-first so longer secrets take precedence in substring
+        # matching (avoids partial replacement artifacts).
+        self._secrets.sort(key=lambda kv: len(kv[1]), reverse=True)
+
+    def redact(self, obj: Any) -> Any:
+        return self._walk(obj)
+
+    def _walk(self, obj: Any) -> Any:
+        if isinstance(obj, str):
+            return self._redact_string(obj)
+        if isinstance(obj, dict):
+            return {k: self._walk(v) for k, v in obj.items()}
+        if isinstance(obj, (list, tuple)):
+            walked = [self._walk(item) for item in obj]
+            return type(obj)(walked)
+        # Numbers, booleans, None, etc. pass through unchanged.
+        return obj
+
+    def _redact_string(self, s: str) -> str:
+        result = s
+        for _key, value in self._secrets:
+            if value in result:
+                result = result.replace(value, REDACTED_TOKEN)
+        return result
+```
+
+---
+
+### `gpu_job_runner/events.py`
+
+```python
+"""Structured JSONL event streaming."""
+
+from __future__ import annotations
+
+import json
+import enum
+import os
+import tempfile
+from dataclasses import dataclass, field
+from typing import Any, TextIO, Iterator
+
+from .redaction import SecretRedactor
+
+
+class EventKind(str, enum.Enum):
+    RUN_START = "run_start"
+    TASK_QUEUED = "task_queued"
+    TASK_STARTED = "task_started"
+    TASK_COMPLETED = "task_completed"
+    TASK_FAILED = "task_failed"
+    TASK_CANCELLED = "task_cancelled"
+    GPU_ACQUIRED = "gpu_acquired"
+    GPU_RELEASED = "gpu_released"
+    STATE_COMMITTED = "state_committed"
+    RUN_FINISHED = "run_finished"
+    RUN_CANCELLED = "run_cancelled"
+    ERROR = "error"
+
+
+@dataclass(frozen=True)
+class Event:
+    seq: int
+    kind: EventKind
+    payload: dict[str, Any] = field(default_factory=dict)
+
+    def to_dict(self) -> dict[str, Any]:
+        return {
+            "seq": self.seq,
+            "kind": self.kind.value,
+            "payload": self.payload,
+        }
+
+    def to_json(self) -> str:
+        return json.dumps(self.to_dict(), sort_keys=True, separators=(",", ":"))
+
+
+def make_event(seq: int, kind: EventKind, **payload: Any) -> Event:
+    return Event(seq=seq, kind=kind, payload=payload)
+
+
+class EventStream:
+    """Streams structured JSONL events to a file and/or in-process consumers.
+
+    Each event is serialized as a single JSON object on one line. A
+    ``SecretRedactor`` is applied before serialization so that secrets never
+    reach disk or stdout.
+    """
+
+    def __init__(
+        self,
+        out_path: str | None = None,
+        redactor: SecretRedactor | None = None,
+        echo_to_stdout: bool = False,
+    ) -> None:
+        self._out_path = out_path
+        self._redactor = redactor or SecretRedactor()
+        self._echo = echo_to_stdout
+        self._file: TextIO | None = None
+        self._buffer: list[str] = []
+        self._last_seq = -1
+        if out_path:
+            self._open_file()
+
+    def _open_file(self) -> None:
+        assert self._out_path is not None
+        directory = os.path.dirname(self._out_path)
+        if directory:
+            os.makedirs(directory, exist_ok=True)
+        self._file = open(self._out_path, "a", encoding="utf-8")
+
+    def emit(self, event: Event) -> None:
+        """Emit a single event, redacting secrets first."""
+        redacted_payload = self._redactor.redact(event.payload)
+        record = {
+            "seq": event.seq,
+            "kind": event.kind.value,
+            "payload": redacted_payload,
+        }
+        line = json.dumps(record, sort_keys=True, separators=(",", ":"))
+        self._buffer.append(line)
+        if self._file is not None:
+            self._file.write(line + "\n")
+            self._file.flush()
+        if self._echo:
+            print(line, flush=True)
+        self._last_seq = event.seq
+
+    def drain(self) -> Iterator[str]:
+        """Yield buffered lines and clear the buffer (for tests/consumers)."""
+        for line in self._buffer:
+            yield line
+        self._buffer.clear()
+
+    @property
+    def last_seq(self) -> int:
+        return self._last_seq
+
+    def close(self) -> None:
+        if self._file is not None:
+            self._file.close()
+            self._file = None
+
+    def __enter__(self) -> "EventStream":
+        return self
+
+    def __exit__(self, exc_type, exc, tb) -> None:
+        self.close()
+```
+
+---
+
+### `gpu_job_runner/manifest.py`
+
+```python
+"""JSON manifest loading and validation."""
+
+from __future__ import annotations
+
+import json
+import os
+from dataclasses import dataclass, field
+from typing import Any
+
+from .errors import ManifestError
+
+
+@dataclass(frozen=True)
+class TaskSpec:
+    task_id: str
+    resource: str  # "gpu" or "cpu"
+    command: list[str]
+    args: dict[str, Any] = field(default_factory=dict)
+    env: dict[str, str] = field(default_factory=dict)
+    timeout_s: float | None = None
+    retries: int = 0
+
+
+class Manifest:
+    def __init__(self, raw: dict[str, Any]) -> None:
+        self.raw = raw
+        self.tasks: list[TaskSpec] = []
+        self.secrets: dict[str, str] = {}
+        self.gpu_count: int = 1
+        self.workdir: str | None = None
+        self._parse()
+
+    def _parse(self) -> None:
+        if not isinstance(self.raw, dict):
+            raise ManifestError("Manifest root must be a JSON object.")
+
+        # Secrets (optional)
+        secrets_raw = self.raw.get("secrets", {})
+        if not isinstance(secrets_raw, dict):
+            raise ManifestError("'secrets' must be an object mapping name->value.")
+        for k, v in secrets_raw.items():
+            if not isinstance(k, str) or not isinstance(v, str):
+                raise ManifestError("Secret keys and values must be strings.")
+            self.secrets[k] = v
+
+        # GPU count (optional, default 1)
+        gpu_count = self.raw.get("gpu_count", 1)
+        if not isinstance(gpu_count, int) or gpu_count < 1:
+            raise ManifestError("'gpu_count' must be a positive integer.")
+        self.gpu_count = gpu_count
+
+        # Workdir (optional)
+        workdir = self.raw.get("workdir")
+        if workdir is not None and not isinstance(workdir, str):
+            raise ManifestError("'workdir' must be a string.")
+        self.workdir = workdir
+
+        # Tasks (required)
+        tasks_raw = self.raw.get("tasks")
+        if not isinstance(tasks_raw, list):
+            raise ManifestError("'tasks' must be a list.")
+        if not tasks_raw:
+            raise ManifestError("Manifest must contain at least one task.")
+
+        seen_ids: set[str] = set()
+        for i, t in enumerate(tasks_raw):
+            if not isinstance(t, dict):
+                raise ManifestError(f"Task at index {i} must be an object.")
+            task_id = t.get("id")
+            if not isinstance(task_id, str) or not task_id:
+                raise ManifestError(f"Task at index {i} missing valid 'id'.")
+            if task_id in seen_ids:
+                raise ManifestError(f"Duplicate task id: {task_id!r}.")
+            seen_ids.add(task_id)
+
+            resource = t.get("resource", "cpu")
+            if resource not in ("gpu", "cpu"):
+                raise ManifestError(
+                    f"Task {task_id}: 'resource' must be 'gpu' or 'cpu'."
+                )
+
+            command = t.get("command")
+            if not isinstance(command, list) or not command:
+                raise ManifestError(f"Task {task_id}: 'command' must be a non-empty list.")
+            for part in command:
+                if not isinstance(part, str):
+                    raise ManifestError(f"Task {task_id}: command parts must be strings.")
+
+            args = t.get("args", {})
+            if not isinstance(args, dict):
+                raise ManifestError(f"Task {task_id}: 'args' must be an object.")
+
+            env = t.get("env", {})
+            if not isinstance(env, dict):
+                raise ManifestError(f"Task {task_id}: 'env' must be an object.")
+            for ek, ev in env.items():
+                if not isinstance(ek, str) or not isinstance(ev, str):
+                    raise ManifestError(f"Task {task_id}: env keys/values must be strings.")
+
+            timeout_s = t.get("timeout_s")
+            if timeout_s is not None and (
+                not isinstance(timeout_s, (int, float)) or timeout_s <= 0
+            ):
+                raise ManifestError(f"Task {task_id}: 'timeout_s' must be a positive number.")
+
+            retries = t.get("retries", 0)
+            if not isinstance(retries, int) or retries < 0:
+                raise ManifestError(f"Task {task_id}: 'retries' must be a non-negative int.")
+
+            self.tasks.append(
+                TaskSpec(
+                    task_id=task_id,
+                    resource=resource,
+                    command=list(command),
+                    args=args,
+                    env=env,
+                    timeout_s=timeout_s,
+                    retries=retries,
+                )
+            )
+
+    def gpu_tasks(self) -> list[TaskSpec]:
+        return [t for t in self.tasks if t.resource == "gpu"]
+
+    def cpu_tasks(self) -> list[TaskSpec]:
+        return [t for t in self.tasks if t.resource == "cpu"]
+
+
+def load_manifest(path: str) -> Manifest:
+    """Load and validate a JSON manifest from disk."""
+    if not os.path.isfile(path):
+        raise ManifestError(f"Manifest not found: {path}")
+    try:
+        with open(path, "r", encoding="utf-8") as fh:
+            raw = json.load(fh)
+    except json.JSONDecodeError as exc:
+        raise ManifestError(f"Invalid JSON in manifest {path}: {exc}") from exc
+    return Manifest(raw)
+```
+
+---
+
+### `gpu_job_runner/state.py`
+
+```python
+"""Atomic persistent state for resumable runs."""
+
+from __future__ import annotations
+
+import json
+import os
+import tempfile
+from dataclasses import dataclass, field
+from enum import Enum
+from typing import Any
+
+from .errors import PersistenceError
+
+
+class TaskStatus(str, Enum):
+    PENDING = "pending"
+    RUNNING = "running"
+    COMPLETED = "completed"
+    FAILED = "failed"
+    CANCELLED = "cancelled"
+
+
+@dataclass
+class TaskRecord:
+    task_id: str
+    status: TaskStatus = TaskStatus.PENDING
+    attempts: int = 0
+    result: dict[str, Any] | None = None
+    error: str | None = None
+
+
+@dataclass
+class StateSnapshot:
+    run_id: str
+    last_seq: int
+    gpu_busy: bool
+    tasks: dict[str, TaskRecord] = field(default_factory=dict)
+
+    def to_dict(self) -> dict[str, Any]:
+        return {
+            "run_id": self.run_id,
+            "last_seq": self.last_seq,
+            "gpu_busy": self.gpu_busy,
+            "tasks": {
+                tid: {
+                    "status": rec.status.value,
+                    "attempts": rec.attempts,
+                    "result": rec.result,
+                    "error": rec.error,
+                }
+                for tid, rec in self.tasks.items()
+            },
+        }
+
+    @classmethod
+    def from_dict(cls, data: dict[str, Any]) -> "StateSnapshot":
+        tasks: dict[str, TaskRecord] = {}
+        for tid, td in data.get("tasks", {}).items():
+            tasks[tid] = TaskRecord(
+                task_id=tid,
+                status=TaskStatus(td.get("status", "pending")),
+                attempts=td.get("attempts", 0),
+                result=td.get("result"),
+                error=td.get("error"),
+            )
+        return cls(
+            run_id=data["run_id"],
+            last_seq=data.get("last_seq", -1),
+            gpu_busy=data.get("gpu_busy", False),
+            tasks=tasks,
+        )
+
+
+class StateStore:
+    """Persists a :class:`StateSnapshot` atomically to a JSON file.
+
+    Writes go to a temporary file in the same directory, which is then
+    renamed over the target using ``os.replace`` — atomic on POSIX. A
+    ``committed_seq`` field records the highest fully-committed event index
+    so that recovery can detect and discard a partially-written trailing
+    event.
+    """
+
+    def __init__(self, path: str) -> None:
+        self._path = path
+        directory = os.path.dirname(path)
+        if directory:
+            os.makedirs(directory, exist_ok=True)
+
+    @property
+    def path(self) -> str:
+        return self._path
+
+    def save(self, snapshot: StateSnapshot, committed_seq: int) -> None:
+        doc = snapshot.to_dict()
+        doc["committed_seq"] = committed_seq
+        payload = json.dumps(doc, sort_keys=True, indent=2) + "\n"
+        self._atomic_write(payload)
+
+    def _atomic_write(self, payload: str) -> None:
+        directory = os.path.dirname(self._path) or "."
+        fd, tmp_path = tempfile.mkstemp(dir=directory, prefix=".state_", suffix=".tmp")
+        try:
+            with os.fdopen(fd, "w", encoding="utf-8") as fh:
+                fh.write(payload)
+                fh.flush()
+                os.fsync(fh.fileno())
+            os.replace(tmp_path, self._path)

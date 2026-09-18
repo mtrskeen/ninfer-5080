@@ -1,0 +1,147 @@
+Let \(p\) be Patrick’s walking rate in miles per hour, and let \(T\) be the time in hours after Patrick left when all three arrive at the park.
+
+Then:
+
+- Patrick travels for \(T\) hours.
+- Tanya left 1 hour after Patrick, so she travels for \(T-1\) hours.
+- Jose left 1 hour after Tanya, so he travels for \(T-2\) hours.
+
+Their rates are:
+
+\[
+\text{Patrick: } p
+\]
+
+\[
+\text{Tanya: } p+2
+\]
+
+\[
+\text{Jose: } (p+2)+7=p+9
+\]
+
+Since all three travel the same distance, we have
+
+\[
+pT=(p+2)(T-1)
+\]
+
+Expanding:
+
+\[
+pT=pT+2T-p-2
+\]
+
+\[
+0=2T-p-2
+\]
+
+\[
+p=2T-2
+\]
+
+Also, Tanya and Jose traveled the same distance:
+
+\[
+(p+2)(T-1)=(p+9)(T-2)
+\]
+
+Substitute \(p=2T-2\). Then
+
+\[
+p+2=2T
+\]
+
+and
+
+\[
+p+9=2T+7
+\]
+
+So
+
+\[
+2T(T-1)=(2T+7)(T-2)
+\]
+
+Expand both sides:
+
+\[
+2T^2-2T=2T^2+3T-14
+\]
+
+\[
+-2T=3T-14
+\]
+
+\[
+5T=14
+\]
+
+\[
+T=\frac{14}{5}
+\]
+
+Now find Patrick’s rate:
+
+\[
+p=2T-2=2\cdot \frac{14}{5}-2=\frac{28}{5}-\frac{10}{5}=\frac{18}{5}
+\]
+
+Thus the distance from school to the park is
+
+\[
+D=pT=\frac{18}{5}\cdot \frac{14}{5}=\frac{252}{25}
+\]
+
+So
+
+\[
+m=252,\qquad n=25
+\]
+
+and since they are relatively prime,
+
+\[
+m+n=252+25=277
+\]
+
+\[
+\boxed{277}
+\]
+<<<REASONING>>>
+We need solve math problem step by step, answer boxed. Let's reason carefully.
+
+Problem: Patrick started walking at constant rate along straight road from school to park. One hour after Patrick left, Tanya started running same road. One hour after Tanya left, Jose started bicycling. Tanya ran at constant rate 2 mph faster than Patrick walked. Jose bicycled at constant rate 7 mph faster than Tanya ran. All three arrived at park same time. Distance m/n miles relatively prime. Find m+n.
+
+Let Patrick's walking rate p mph. Tanya rate p+2. Jose rate (p+2)+7 = p+9.
+
+Let distance D. They all arrive same time. Let timeline: Patrick leaves t=0. Tanya leaves t=1. Jose leaves t=2. Suppose Patrick arrives at time T (hours after Patrick left). Tanya arrives at same time T, having walked for T-1 hours. Jose arrives at T, having bicycled for T-2 hours. Constant rates.
+
+Equations: D = p*T = (p+2)(T-1) = (p+9)(T-2). Need positive T>2.
+
+Set p T = (p+2)(T-1). Expand: pT = pT +2T - p -2 => 0 = 2T - p -2 => p = 2T -2.
+
+Set (p+2)(T-1) = (p+9)(T-2) or p T = (p+9)(T-2). Use p=2T-2. Then p+2=2T. pT = (2T-2)T. p+9=2T+7. RHS (2T+7)(T-2) = 2T^2 -4T +7T -14 = 2T^2+3T-14. LHS 2T^2-2T. Equate: 2T^2-2T = 2T^2+3T-14 => -2T=3T-14 => 5T=14 => T=14/5=2.8. p=2T-2=28/5-10/5=18/5=3.6. D=pT=(18/5)*(14/5)=252/25. Check Tanya: rate 26/5? p+2=18/5+10/5=28/5=5.6; time T-1=9/5; D= (28/5)(9/5)=252/25. Jose: rate 37/5? p+9=18/5+45/5=63/5=12.6; time T-2=4/5; D=252/25. m=252,n=25 relatively prime. m+n=277.
+
+Need produce final step-by-step, boxed. Ensure no hidden issues: They started from school to park same direction, one hour after Patrick left Tanya started, one hour after Tanya left Jose started. So Jose left 2h after Patrick. Yes. All arrived same time. Rates positive. T must be >2 (Jose time positive). T=14/5 >2, p positive. Good.
+
+Need maybe alternative variable x = Patrick time? We did. Need be clear. Final answer 277.
+
+Let's think if any interpretation: "One hour after Patrick left, Tanya started running... One hour after Tanya left, Jose started" means Tanya started 1 hour after Patrick, Jose started 1 hour after Tanya = 2 hours after Patrick. Good. Rates: Tanya 2 mph faster than Patrick, Jose 7 mph faster than Tanya. Good.
+
+Need ensure m/n distance in miles; distance D=252/25, m+n=277.
+
+We should present step-by-step in final. Use boxed answer. Could mention variables.
+
+Potential pitfall: Could Tanya and Jose have started en route? They started from school, so yes. They are slower/faster. All arrived same time, possible due to head starts.
+
+Let's maybe include equations with time t after Patrick left. If t is arrival time, Patrick travel time t, Tanya t-1, Jose t-2. Then rate relationships. Let Patrick speed x. Then x t = (x+2)(t-1), solve x=2t-2. Then (x+2)(t-1) = (x+9)(t-2). Substitute: (2t)(t-1)= (2t+7)(t-2) because x+2=2t, x+9=2t+7. Expand: 2t^2-2t = 2t^2+3t-14 -> t=14/5. Then D = x t = (2t-2)t =? If t=14/5, 2t-2=18/5; product 252/25. Or directly x = 18/5. D = 252/25. gcd 252 and 25? 252=2^2*3^2*7, 25=5^2, gcd 1. m+n=277.
+
+Double-check arithmetic: (x+2)(t-1): x=2t-2, x+2=2t, product=2t(t-1)=2t^2-2t. (x+9)(t-2): x+9=2t+7, product=(2t+7)(t-2)=2t^2 -4t +7t -14 =2t^2+3t-14. Equate: 2t^2-2t=2t^2+3t-14 => -2t=3t-14 -> -5t=-14 -> t=14/5. Correct. x=28/5-2? 2t-2=28/5-10/5=18/5. D=18/5*14/5=252/25. Tanya speed x+2=28/5 time=9/5 =>252/25; Jose speed x+9=63/5? x+9=18/5+45/5=63/5, time=4/5 => 252/25. Good.
+
+Need final concise but step by step. Also maybe "let x be Patrick's speed in mph, let T be Patrick's travel time (also total time until common arrival)". Then because Tanya left 1 hour later and still arrived at same time, T > 1, Jose >2. We found T=14/5, Jose time 4/5 positive. Good.
+
+Need ensure answer inside boxed{} exactly? The instruction: "Put your answer inside \boxed{}." We can end with \boxed{277}. Use LaTeX.
+
+Now final. Ensure not overdo. Include all steps. No need mention analysis.

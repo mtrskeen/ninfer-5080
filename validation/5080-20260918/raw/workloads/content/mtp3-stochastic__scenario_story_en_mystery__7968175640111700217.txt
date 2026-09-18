@@ -1,0 +1,231 @@
+**Part I: The Silence of the Summit**
+
+The darkness was not merely an absence of light; it was a physical weight, pressing against the glass dome of the Mount Aethel Observatory. Outside, the wind screamed through the pine trees, a jagged, rhythmic howl that vibrated in the bones of anyone standing inside. Inside, however, there was only the hum of the backup generator kicking in, a low, sickly thrum that did little to dispel the cold creeping up from the concrete floor.
+
+Dr. Elias Thorne, the observatory’s lead calibration engineer, stood in the center of the main control room. He was a man of precise habits and quiet demeanor, known for his ability to find the hairline fracture in a lens or the microscopic drift in a sensor array. Tonight, he was looking for a body.
+
+Or so everyone thought.
+
+"Is he dead?" asked Dr. Aris Vane, the director of the institute, his voice trembling slightly as he clutched a flashlight to his chest. The beam cut through the gloom, illuminating the slumped figure of Julian Kade, the junior astrophysicist, who lay face-down near the primary telescope mount.
+
+Elias did not answer immediately. He walked toward the body, his footsteps echoing on the polished floor. He knelt beside Julian, ignoring the gasps from the three other staff members huddled by the door: Mara, the data analyst; Silas, the maintenance chief; and Lena, the night shift coordinator. They were all trapped. The power failure had triggered the safety protocol, locking the heavy steel blast doors of the observatory. No one could leave until the grid stabilized, which, according to the external weather reports, would take at least six hours.
+
+Elias touched Julian’s shoulder. The fabric of the lab coat was damp with sweat, but the skin beneath was warm. Too warm.
+
+"He’s breathing," Elias said softly.
+
+Aris lowered his flashlight. "What? But he was unconscious! We found him slumped over the controls!"
+
+"He is not dead," Elias corrected, standing up and brushing the dust from his knees. His eyes scanned the room, cataloging every object, every shadow. "He is playing a role. And someone else is directing the play."
+
+**Part II: The Brass Key**
+
+The room was lit now by the flickering emergency lights, casting long, distorted shadows across the walls. The tension in the air was palpable, thick enough to choke on. Elias moved with deliberate slowness, his hands in his pockets, though his mind was racing faster than the wind outside.
+
+"Whoever did this wanted us to believe Julian was murdered," Silas grumbled, crossing his arms. "If he’s alive, why the theatrics? Why lock us in?"
+
+"Because a locked room is a perfect alibi," Elias said, turning to face the group. "And a staged death is a perfect distraction. Someone used the chaos of the power outage to move something, or to frame someone, while we were all focused on the 'corpse.'"
+
+Mara stepped forward, her eyes wide. "But if Julian is alive, where is the weapon? Where is the attacker? We are sealed in here. There is no exit."
+
+Elias nodded. "Correct. Which means the crime, whatever it is, happened before the doors locked, or it is not a crime of violence at all. It is a crime of theft, or sabotage. And the key to solving it isn’t hidden in a dark corner. It’s right here."
+
+He reached into his own pocket and pulled out a small, heavy object. It was a brass key, tarnished and worn, with a distinctive cross-shaped head.
+
+"I found this in my jacket pocket when I came down from the upper deck to check the breaker box," Elias explained. "I didn't put it there. I have a strict inventory system for my tools. This key fits the vault door behind the server rack."
+
+Silas frowned. "The vault? What’s in the vault?"
+
+"The original calibration logs for the new interferometer," Lena whispered, her voice barely audible. "The ones that show the baseline error rates. If those logs are missing, the entire project is compromised. The grant funding is tied to those specific metrics."
+
+Elias looked at the key, then at Julian, who was still lying on the floor, feigning unconsciousness. "Julian," Elias said, his voice cutting through the silence like a scalpel. "Get up. You’re ruining the lighting for the rest of us."
+
+Julian groaned, slowly lifting his head. His eyes were clear, alert, and filled with a strange, defensive fear. "I... I don't know what you're talking about, Elias. I just felt dizzy. The pressure change..."
+
+"Save it," Elias said. "We have four hours before the doors open. Let’s use them to find out who took the logs, and why they needed to stage your death to do it."
+
+**Part III: The Upside-Down Star Chart**
+
+Elias led the group to the central console, where the star charts were usually projected onto the curved wall. With the power out, the digital displays were black, but the physical paper charts remained pinned to the corkboard nearby. Most were neatly aligned, their constellations oriented correctly relative to the northern horizon.
+
+One chart, however, was different.
+
+It was a high-resolution printout of the Orion Nebula, dated three days prior. While the other charts hung straight, this one was rotated 180 degrees. The bright core of the nebula pointed downward, towards the floor, rather than up towards the ceiling.
+
+"Why is that upside down?" Aris asked, squinting at the paper.
+
+"Because it’s a signal," Elias said. He walked over and gently straightened the chart, aligning it with the others. As he did, a small, folded piece of paper fell from behind it.
+
+Lena caught it. She unfolded it carefully. It was a handwritten note, written in hurried, jagged script.
+
+*Check the tea. Count the seconds.*
+
+"What does that mean?" Mara asked, looking from the note to the cup of tea sitting on the edge of the console. It was a simple ceramic mug, half-full of dark liquid. Steam was still rising from it, indicating it had been poured recently.
+
+"Unscented, unsweetened," Elias noted, picking up the mug. He sniffed it. It smelled of strong black tea, nothing more. "This tea was poured after the power went out. I remember seeing the kettle being filled during the initial surge. But who poured it?"
+
+"Me," Silas said, stepping back. "I made it for myself, but I dropped the mug when the lights went out. It shattered. I didn't refill it."
+
+Elias looked at the intact mug. "Then someone else poured it. And they left it here, knowing we would find it."
+
+He turned to Julian. "Julian, did you drink from this cup?"
+
+Julian shook his head vigorously. "No. I never drink sweet tea. I prefer herbal."
+
+Elias held the mug up to the faint light of the emergency bulb. "It’s unsweetened. So it’s not a trap for someone with a specific taste preference. It’s a marker. A timestamp."
+
+"A timestamp for what?" Aris demanded.
+
+"For the eleven seconds," Elias said quietly.
+
+**Part IV: The Missing Eleven Seconds**
+
+Elias led them to the voice recorder, a ruggedized device mounted on the side of the console. It was designed to capture ambient audio for diagnostic purposes, logging every word spoken in the control room.
+
+"Play it back," Elena commanded, her voice sharp.
+
+Elias pressed the play button. The static hiss of the empty room filled the space. Then, voices began to emerge.
+
+*“Power fluctuation detected,”* the automated system announced. *“Initiating safety lockdown.”*
+
+Then, the sound of shuffling feet. Laughter.
+
+*“Damn it, the breakers are stuck again,”* Silas’s voice crackled through the speaker. *“I’m going to hit it.”*
+
+*“Careful, Silas!”* Mara’s voice. *“You’ll trip the main fuse.”*
+
+There was a loud *clank*, followed by a sudden drop in volume. The audio cut out abruptly.
+
+Elias paused the recording. He checked the timestamp on the display. The gap in the audio log lasted exactly eleven seconds.
+
+"Eleven seconds," Elias repeated. "During those eleven seconds, the microphone should have recorded everything that happened in the room. But the file is corrupted. Or deleted."
+
+"Someone tampered with the recorder," Lena said. "Why would they delete eleven seconds?"
+
+"Because in those eleven seconds, the crime occurred," Elias said. "Not a murder. A theft. Or a switch."
+
+He looked at the group. "Think. What can be done in eleven seconds? You can’t pick a lock in eleven seconds. You can’t break a window. But you can swap two objects. You can replace a document. You can hide a key."
+
+"Swap what for what?" Aris asked.
+
+Elias pointed to the brass key in his hand. "This key fits the vault. But the vault has two locks. One requires this key, and the other requires a biometric scan. The biometric scanner is disabled during a power failure. So, to get into the vault, you need the key. But you also need to bypass the alarm that triggers if the vault is opened without authorization."
+
+"So, someone swapped the key for a dummy?" Mara suggested.
+
+"No," Elias said. "They swapped the *contents*. They took the real logs and replaced them with fakes. And they used the eleven-second blackout to do it, while we were distracted by the noise of the breaker failing."
+
+"But how?" Silas asked. "The vault is behind the server rack. It’s ten feet away from the console. In eleven seconds?"
+
+Elias smiled, a thin, knowing curve of his lips. "That’s why the star chart was upside down. It wasn’t just a signal. It was a map."
+
+**Part V: The Geometry of Deception**
+
+Elias walked back to the corkboard. He pointed to the upside-down Orion chart. "Look closely at the constellation. Orion’s Belt. Three stars in a row."
+
+He traced the line with his finger. "In the actual sky, Orion’s Belt points towards the east. But on this chart, because it’s upside down, it points towards the west."
+
+He turned to the room. "The west side of the control room contains the ventilation shafts. Specifically, the intake vent above the coffee station."
+
+He gestured to the corner where the tea had been prepared. "When the power failed, the fans stopped. The air in the room became stagnant. But the ventilation shafts are connected to the outer corridor, which remains pressurized even during a lockdown."
+
+"Are you saying someone went through the vents?" Lena asked, skeptical.
+
+"No," Elias said. "I’m saying someone *used* the vents. Look at the tea cup again."
+
+He picked up the cup and held it under the light. At the bottom of the mug, barely visible, was a tiny scratch. A laser etching.
+
+"It’s a code," Elias said. "The scratch pattern matches the binary code for the number 11. Eleven seconds. Eleven seconds is the time it takes to slide a micro-drive into the slot of the voice recorder."
+
+He turned to Julian. "Julian, you are a skilled technician. You know how these systems work. Did you plant the drive?"
+
+Julian’s face paled. "I didn't plant anything! I was trying to fix the breaker! I heard a click, and then the lights went out. I didn't touch the recorder!"
+
+"Then who did?" Elias pressed. "Who had access to the recorder during those eleven seconds?"
+
+Silas raised his hand. "I was at the breaker panel. I was hitting it. I didn't see anyone go near the console."
+
+"Mara?" Elias asked.
+
+"I was checking the data feeds on my tablet," Mara said, holding up the device. "I was right here, next to the console. I didn't see anyone move."
+
+"Lena?"
+
+"I was pouring the tea," Lena admitted, her voice dropping. "I saw Julian stumble. I thought he was hurt. I ran to help him. I was out of the room for maybe... twenty seconds."
+
+Elias studied her. "Twenty seconds. That’s longer than the eleven-second gap. But if you were moving quickly, you could have passed by the console."
+
+"Why would I steal the logs?" Lena asked, her eyes glistening. "I’m the coordinator. I benefit from the project succeeding."
+
+"Exactly," Elias said. "So it wasn’t you. It was someone who wanted the project to fail. Or someone who wanted to sell the data to a rival firm."
+
+He looked at Aris. "Director Vane. You have been under immense pressure from the board of directors. They threatened to pull funding if the interferometer didn’t meet its benchmarks by month’s end. The logs show that the benchmarks will be missed. If those logs are exposed, the project is defunded. If they are hidden, the project continues, but the data is fraudulent."
+
+Aris stared at him, his expression unreadable. "You think I stole my own logs?"
+
+"I think you staged Julian’s death to create a diversion," Elias said. "While everyone was worried about the 'murder,' you slipped into the vault, swapped the real logs for the fakes, and planted the brass key in my pocket to frame me. You used the upside-down chart to mark the location of the micro-drive, which you hid in the tea cup’s base. And you deleted the eleven seconds of audio to erase the sound of you opening the vault."
+
+**Part VI: The Weight of Truth**
+
+The room fell silent. The wind outside seemed to hold its breath.
+
+Aris slowly removed his glasses and cleaned them, a nervous habit Elias had observed many times before. "You’re wrong, Elias. I wouldn’t do that. The science is too important."
+
+"Is it?" Elias asked gently. "Or is it just the funding? The prestige? The career?"
+
+He walked over to the tea cup. He tapped the bottom of the mug with his fingernail. A small, metallic click sounded. The base detached, revealing a tiny, black micro-drive.
+
+Elias pulled it out. "This drive contains the real calibration logs. They show that the interferometer is drifting beyond acceptable parameters. If you submit the fake logs, you commit fraud. If you submit the real logs, you lose the grant, and the observatory closes. Julian loses his job. We all lose our jobs."
+
+Aris looked at the drive in Elias’s hand. For a moment, the director looked smaller, older, defeated.
+
+"I didn't kill Julian," Aris whispered. "I just... pushed him. Harder than intended. He hit his head on the console. He lost consciousness. I panicked. I thought if he stayed down, I could buy time to fix the logs. I didn't plan for the power outage to lock us in. I didn't expect the chaos."
+
+"And the key?" Elias asked.
+
+"I put it in your pocket," Aris confessed, his voice breaking. "I knew you’d find it. I wanted you to investigate. I wanted you to prove my innocence, or at least, to expose the flaw in the system that forced me to choose between integrity and survival."
+
+Elias looked at the drive, then at Aris. "You manipulated a team of scientists. You staged a murder. You committed fraud. All to save your career."
+
+"Was it worth it?" Mara asked, her voice cold.
+
+Aris looked at the group. "I don't know. But I know that if I turn in the real logs, this place closes. My life’s work ends. Is that justice? Or is it just another kind of death?"
+
+Elias held the micro-drive. He had the evidence. He had the proof of fraud, of assault, of deception. He could hand it over to the authorities when the doors opened in four hours. He could expose Aris. He could ensure the truth was known.
+
+But if he did, the observatory would close. The research, the years of dedication, the future discoveries—all of it would vanish. Julian would be fired for incompetence, though he was innocent of the fraud. The team would be scattered.
+
+Or, he could destroy the drive. He could let Aris keep the secret. The project would continue. The funding would remain. The observatory would stand. But the data would be lies. The science would be built on a foundation of deceit.
+
+**Part VII: The Quiet Dilemma**
+
+Elias stood in the center of the room, the small black drive resting in his palm. The weight of it was negligible, yet it felt like it carried the gravity of the entire mountain.
+
+Around him, the team waited. Their faces were a mosaic of hope, fear, and judgment. Julian was sitting up now, rubbing his head, looking confused and frightened. Silas was watching Elias with wary eyes. Lena was staring at the floor. Aris was looking at Elias, waiting for the verdict.
+
+Elias looked at the star chart on the wall. The Orion Nebula, right-side up now, glowed faintly in the dim light. It was beautiful. It was true.
+
+He thought about the purpose of an observatory. To look up. To seek the truth in the vast, indifferent cosmos. To measure the light of distant stars and understand the universe.
+
+If he destroyed the drive, he was protecting the institution, but corrupting its soul. He was choosing comfort over truth. He was becoming complicit in the very lie Aris had created.
+
+If he kept the drive, he was choosing truth, but destroying the institution. He was choosing principle over people.
+
+"Give it to me," Aris said, his voice steady now. "Let me handle it. Let me explain to the board. Let me take the fall."
+
+Elias shook his head. "You can’t explain it away, Aris. Not this time."
+
+He walked to the edge of the console, where the view of the night sky was unobstructed. The stars were out, brilliant and cold. They did not care about grants, or careers, or lives. They simply were.
+
+"Elias," Lena said softly. "What are you going to do?"
+
+Elias closed his fist around the drive. He did not crush it. He did not throw it away. He simply held it, feeling the solid reality of the plastic casing against his skin.
+
+"I’m going to wait," he said.
+
+"Wait for what?" Silas asked.
+
+"For the doors to open," Elias said. "And then, I’m going to make a choice. But I won’t make it for any of you. I’ll make it for the stars."
+
+He turned back to the group. "Julian, are you alright?"
+
+Julian nodded, wincing. "Yeah. Just a bump."

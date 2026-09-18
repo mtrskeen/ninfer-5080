@@ -1,0 +1,8 @@
+当输入为空时，`values.size()` 为 0，导致除以零错误（未定义行为）。
+此外，`std::accumulate` 的初始值 `0.0` 是双精度类型，而累加器会隐式转换为 `double`，但这并非主要错误，核心问题在于除零。
+修复方法是先检查向量是否为空，若为空则返回 0.0（或其他约定的默认值），否则再执行除法。
+
+```cpp
+double mean(const std::vector<int>& values) {
+    if (values.empty()) return 0.0;
+    return

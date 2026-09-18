@@ -1,0 +1,66 @@
+2. In multi-stream inference, the memory bandwidth bottleneck is alleviated by amortizing weight reads across multiple concurrent sequences, significantly increasing arithmetic intensity.
+3. Quantization to 8-bit integer precision reduces memory footprint by a factor of four compared to 16-bit floating point, allowing larger models to fit within GPU memory constraints.
+4. The compute-to-memory ratio, or arithmetic intensity, determines whether a neural network operation is bound by processing power or data movement speed in modern hardware architectures.
+5. Batch normalization stabilizes training dynamics by normalizing layer inputs, reducing internal covariate shift and allowing for higher learning rates during optimization.
+6. Residual connections mitigate the vanishing gradient problem in deep networks by providing a direct path for gradients to flow from later layers back to earlier ones.
+7. Sparse matrix multiplication exploits the inherent sparsity in weight matrices to skip zero-valued operations, reducing both compute time and energy consumption per inference.
+8. Tensor parallelism partitions model layers across multiple GPUs, where each device computes a subset of the matrix dimensions, requiring high-speed interconnects for gradient synchronization.
+9. Pipeline parallelism divides the model into sequential stages assigned to different devices, overlapping computation and communication to hide latency behind useful work.
+10. Data parallelism replicates the entire model on each GPU, splitting the input batch into micro-batches, and synchroning gradients via all-reduce operations after each forward pass.
+11. Mixed-precision training utilizes 16-bit floating point for forward and backward passes while maintaining 32-bit master weights, balancing speed, memory usage, and numerical stability.
+12. Knowledge distillation compresses a large teacher model into a smaller student model by forcing the student to mimic the soft probability distribution of the teacher’s outputs.
+13. Pruning removes redundant weights or neurons with minimal impact on accuracy, enabling model compression that reduces storage requirements and accelerates inference on edge devices.
+14. The attention mechanism allows the model to dynamically focus on relevant parts of the input sequence, weighting tokens based on their semantic relevance to the current context.
+15. Positional encodings inject order information into transformer architectures, which are otherwise permutation-invariant, ensuring the model understands the sequential nature of language.
+16. Layer normalization operates on the feature dimension for each individual sample, providing stable statistics that do not depend on batch size, making it robust for variable-sized batches.
+17. Dropout randomly deactivates a fraction of neurons during training to prevent co-adaptation of features, acting as a regularizer that improves generalization performance.
+18. Weight decay penalizes large parameter values during optimization, encouraging smaller weight norms that often correlate with better generalization and reduced overfitting.
+19. Gradient clipping prevents exploding gradients in recurrent networks by capping the magnitude of updates, ensuring stable convergence in long dependency chains.
+20. The softmax function converts raw logits into a probability distribution, ensuring that output values are positive and sum to one, facilitating interpretable classification results.
+21. Cross-entropy loss measures the difference between predicted probabilities and true labels, providing a differentiable objective function that drives effective classification training.
+22. Mean squared error is suitable for regression tasks, penalizing large deviations quadratically, which makes the model sensitive to outliers but robust to small errors.
+23. Adam optimizer combines momentum and adaptive learning rates, adjusting step sizes for each parameter based on estimates of first and second moments of gradients.
+24. Learning rate scheduling gradually decays the learning rate during training, helping the optimizer escape local minima early and converge precisely near the global optimum later.
+25. Warmup phases increase the learning rate linearly from a small initial value to the target value, stabilizing early training steps when model parameters are randomly initialized.
+26. Cosine annealing schedules the learning rate to follow a cosine curve, allowing smooth transitions between high and low learning rates that improve convergence behavior.
+27. Stochastic gradient descent updates weights using a single random sample or mini-batch, introducing noise that helps escape shallow local minima in the loss landscape.
+28. Mini-batch training balances the noise of single-sample SGD with the computational efficiency of full-batch methods, offering a practical compromise for large-scale training.
+29. Weight initialization schemes like Xavier or He initialization set initial parameter values based on layer fan-in and fan-out, preserving signal variance through deep networks.
+30. Backpropagation efficiently computes gradients for all parameters by reusing intermediate activations, reducing the computational cost of derivative calculation in layered architectures.
+31. Automatic differentiation frameworks track operations in a computational graph, enabling the precise calculation of gradients without manual derivation of complex mathematical functions.
+32. Checkpointing saves model state periodically during training, allowing recovery from interruptions and facilitating incremental training or fine-tuning from pre-trained bases.
+33. Early stopping halts training when validation performance stops improving, preventing overfitting and saving computational resources on diminishing returns.
+34. Data augmentation artificially expands the training dataset by applying transformations like rotation or cropping, enhancing model robustness to variations in input data.
+35. Augmentation pipelines must be consistent between training and validation sets to ensure fair evaluation, though test sets typically remain unmodified to reflect real-world conditions.
+36. Normalization of input data ensures features are on similar scales, preventing features with larger magnitudes from dominating the loss function and gradient updates.
+37. Standardization centers data around zero mean and unit variance, which can improve the convergence speed of optimizers that assume standardized inputs.
+38. Data shuffling randomizes the order of samples in each epoch, ensuring that mini-batches are representative of the entire dataset and preventing bias in gradient estimation.
+39. Distributed training frameworks coordinate multiple workers to process data in parallel, requiring careful handling of gradient synchronization to maintain model consistency.
+40. Ring all-reduce algorithm optimizes gradient synchronization in distributed setups by passing partial sums in a ring topology, minimizing communication bandwidth requirements.
+41. Bucketed communication groups gradients of similar sizes together, reducing the number of synchronization calls and improving network utilization in distributed training.
+42. Overlapping computation and communication hides the latency of gradient synchronization behind ongoing forward or backward passes, maximizing hardware utilization.
+43. Asynchronous updates allow workers to update the global model without waiting for others, increasing throughput but potentially introducing instability due to stale gradients.
+44. Synchronous updates ensure all workers use the same model version for a given step, providing stable convergence at the cost of waiting for the slowest worker.
+45. Stragglers in distributed training slow down the entire cluster if synchronous updates are used, necessitating mechanisms to detect and handle slow nodes.
+46. Fault tolerance in distributed systems involves checkpointing and automatic restart of failed workers, ensuring that transient hardware failures do not halt long-running jobs.
+47. Elastic training allows the number of workers to scale up or down dynamically based on available resources, optimizing cost and resource utilization in cloud environments.
+48. Resource contention occurs when multiple jobs compete for shared GPU or CPU resources, leading to unpredictable performance and requiring sophisticated scheduling policies.
+49. Preemption policies allow high-priority jobs to interrupt lower-priority tasks, reclaiming resources quickly, though this requires efficient state restoration mechanisms.
+50. Job scheduling algorithms like First-Come-First-Served or Fair Share balance queue length and user fairness, influencing overall cluster throughput and user satisfaction.
+51. Binary search trees provide logarithmic time complexity for searching, insertion, and deletion operations, making them efficient for ordered data structures in memory-constrained systems.
+52. Hash tables offer constant-time average lookup complexity by mapping keys to array indices, trading off collision resolution overhead for speed in frequent access patterns.
+53. Bloom filters provide probabilistic membership testing with no false positives, using bit arrays to indicate potential presence of elements in a set.
+54. Consistent hashing distributes data across nodes in a circle, ensuring minimal data movement when nodes are added or removed from a distributed cluster.
+55. Raft consensus algorithm simplifies leader election and log replication in distributed systems, providing strong consistency guarantees with understandable state machines.
+56. Paxos protocol achieves consensus among unreliable processes, forming the theoretical foundation for many distributed storage systems, though its complexity is high.
+57. Quorum systems define read and write sets such that any read set intersects any write set, ensuring linearizability in distributed databases.
+58. Vector clocks track causal ordering of events in distributed systems by maintaining logical timestamps, allowing detection of concurrent versus sequential operations.
+59. Two-phase commit protocol coordinates atomic transactions across multiple resources, ensuring all-or-nothing semantics, though it suffers from blocking issues during failures.
+60. Optimistic concurrency control allows multiple transactions to proceed without locks, validating changes at commit time to detect conflicts, reducing contention in read-heavy workloads.
+61. Pessimistic locking reserves resources for a transaction until completion, preventing conflicts upfront but potentially causing deadlocks and reduced concurrency.
+62. Deadlock detection algorithms identify cycles in wait-for graphs, allowing the system to abort one transaction to break the cycle and restore progress.
+63. Deadlock prevention strategies like wait-die or wound-wait use timestamp-based rules to ensure that circular wait conditions never form.
+64. Cache coherence protocols like MESI maintain consistency of cached data across multiple processors in a multiprocessor system, managing state transitions for cache lines.
+65. Write-through caching writes data to both cache and main memory simultaneously, ensuring persistence but increasing memory bus traffic.
+66. Write-back caching delays writing to main memory until the cache line is evicted, reducing memory traffic but requiring dirty bits to track modified data.
+67. Virtual memory abstraction allows processes to address more memory than physically installed, using page tables

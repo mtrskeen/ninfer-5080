@@ -1,0 +1,133 @@
+2. In contrast, a multi-stream decode step is often latency bound because the compute units must wait for data dependencies to resolve across parallel branches before proceeding to the next layer.
+
+3. Quantization reduces memory bandwidth requirements by packing more weights into fewer bits, thereby increasing the arithmetic intensity of the decode operation per byte transferred.
+
+4. The roofline model predicts that performance is limited by either peak floating-point throughput or memory bandwidth, whichever is lower for a given operational intensity.
+
+5. High operational intensity operations, such as matrix multiplications in the prefill phase, are compute bound and utilize the full FLOPS capacity of the accelerator.
+
+6. Low operational intensity operations, such as the element-wise updates in a single-token decode, are memory bound and cannot saturate the compute units regardless of their speed.
+
+7. Batching multiple requests increases the effective batch size, which amortizes the fixed cost of weight loading across multiple tokens, shifting the bottleneck back toward compute.
+
+8. Tensor parallelism splits large matrices across multiple devices, requiring high-bandwidth interconnects to synchronize partial results at every layer boundary.
+
+9. Pipeline parallelism divides the model into stages, where each device holds a subset of layers, reducing memory pressure but introducing bubble time during pipeline fill and drain.
+
+10. Hybrid parallelism combines tensor and pipeline strategies to balance memory constraints with communication overhead, optimizing for both latency and throughput.
+
+11. Communication overhead in distributed inference scales with the number of nodes, necessitating topology-aware scheduling to minimize cross-rack traffic.
+
+12. All-reduce operations in tensor-parallel layers require the sum of partial outputs from all workers, creating a synchronization point that dictates the minimum step time.
+
+13. The critical path of a decode step is determined by the longest dependency chain, which typically includes the most complex attention computation or the largest matrix multiplication.
+
+14. Speculative decoding uses a smaller draft model to propose multiple tokens, which are then verified in parallel by the large target model, effectively increasing tokens per second.
+
+15. The acceptance rate of speculative tokens depends on the similarity between the draft and target model distributions; low acceptance rates negate the benefits of speculation.
+
+16. Tree-based speculation proposes a branching sequence of potential tokens, allowing the target model to verify multiple paths simultaneously and maximize the chance of accepting a long prefix.
+
+17. KV cache management is crucial for long-context inference, requiring efficient eviction policies to prevent memory overflow when the context window exceeds allocated VRAM.
+
+18. PagedAttention treats the KV cache like virtual memory pages, allowing non-contiguous allocation and sharing of key-value blocks across different requests.
+
+19. Prefix caching reuses previously computed KV states for common prompt prefixes, significantly reducing prefill time for repetitive tasks like chat history or system prompts.
+
+20. Dynamic batching groups arriving requests into batches based on estimated completion times, maximizing GPU utilization while adhering to strict latency SLAs.
+
+21. Continuous batching allows new requests to join an ongoing batch and finished requests to leave immediately, maintaining high throughput without waiting for the entire batch to finish.
+
+22. Preemption mechanisms temporarily suspend active requests to prioritize higher-priority jobs, saving their state to CPU memory or disk for later resumption.
+
+23. Checkpointing the execution state enables fault tolerance, allowing the system to restart failed workers from the last known good state without reprocessing the entire input.
+
+24. Model sharding across heterogeneous hardware requires careful mapping of layers to devices with matching precision support and memory capacity.
+
+25. Mixed-precision inference uses FP16 for activations and weights while accumulating gradients in FP32, balancing speed and numerical stability.
+
+26. Integer quantization (INT8) further reduces memory footprint and increases compute speed, though it may degrade accuracy if not carefully calibrated with representative data.
+
+27. SmoothQuant mitigates quantization error by scaling activations and weights to move outliers from one tensor to the other, where they are easier to handle.
+
+28. GPTQ employs post-training quantization with an OBS (Optimal Brain Surgeon) algorithm to determine optimal rounding of weights while minimizing output error.
+
+29. AWQ identifies salient channels in the weight matrix and protects them from aggressive quantization, preserving model accuracy with minimal calibration data.
+
+30. Sparsity exploitation skips zero-valued weights during computation, reducing both memory access and arithmetic operations, provided the hardware supports sparse kernels.
+
+31. Structured sparsity, such as 2:4 pruning, removes pairs of weights within groups of four, enabling specific hardware accelerators to achieve significant speedups.
+
+32. Unstructured sparsity offers higher compression ratios but requires irregular memory access patterns that are difficult to optimize on modern GPUs.
+
+33. FlashAttention optimizes attention computation by tiling the key and value matrices to fit in SRAM, avoiding repeated global memory reads for the query matrix.
+
+34. FlashDecoding splits the query dimension across threads to parallelize the attention computation, ensuring full utilization of the GPU's thread blocks even for small batches.
+
+35. PagedKV integration with FlashAttention allows the attention kernel to gather non-contiguous KV pages efficiently using pointer indirection tables.
+
+36. CUDA Graphs capture the sequence of kernel launches and memory transfers, reducing CPU overhead and enabling deterministic replay of the inference graph.
+
+37. Kernel fusion combines multiple small operations into a single kernel launch, reducing memory round-trips and improving data locality in registers.
+
+38. Operator fusion in transformers typically merges LayerNorm, GELU, and MatMul into a single custom kernel to minimize intermediate tensor allocations.
+
+39. Autotuning selects the fastest kernel variant for a given input shape and hardware configuration, storing the choice in a lookup table for subsequent calls.
+
+40. JIT compilation generates specialized code for specific tensor dimensions at runtime, eliminating generic branching logic and enabling constant folding.
+
+41. Static graph optimization analyzes the entire computation graph offline to perform algebraic simplifications, dead code elimination, and constant propagation.
+
+42. Dynamic graph mode allows control flow to depend on input values, enabling adaptive algorithms but preventing certain static optimizations.
+
+43. Graph partitioning for multi-device inference assigns subgraphs to specific workers, minimizing the volume of data transferred across the network.
+
+44. Data parallelism replicates the model on each worker, splitting the input batch, and aggregating gradients, suitable for training but less efficient for inference.
+
+45. Expert parallelism in Mixture-of-Experts models routes tokens to different experts on different devices, requiring efficient all-to-all communication.
+
+46. Context parallelism splits the sequence length across devices, allowing each worker to process a portion of the context, useful for extremely long documents.
+
+47. Sequence parallelism divides the sequence dimension in linear layers, requiring all-gather operations to reconstruct full sequences for attention computation.
+
+48. Zero-redundancy optimizer states distribute optimizer parameters across workers, reducing per-device memory usage in large-scale training scenarios.
+
+49. Gradient accumulation simulates larger batch sizes by averaging gradients over multiple micro-steps, stabilizing training without increasing memory footprint.
+
+50. Learning rate warmup gradually increases the learning rate at the start of training, preventing divergence in the early epochs when gradients are noisy.
+
+51. Cosine decay schedules reduce the learning rate smoothly towards the end of training, helping the model converge to a sharper minimum.
+
+52. Weight decay acts as L2 regularization, preventing weights from growing too large and improving generalization performance.
+
+53. Dropout randomly deactivates neurons during training, forcing the network to learn redundant representations and reducing overfitting.
+
+54. Label smoothing relaxes the one-hot target distribution, assigning a small probability to incorrect classes, which improves calibration and confidence estimates.
+
+55. Stochastic depth randomly skips entire residual blocks during training, acting as a regularizer that encourages robustness in deep networks.
+
+56. Batch normalization normalizes activations within each mini-batch, stabilizing training dynamics and allowing higher learning rates.
+
+57. Layer normalization normalizes activations across features for each sample, independent of batch size, making it more suitable for variable-length sequences.
+
+58. RMSNorm simplifies layer normalization by omitting mean subtraction, relying only on root-mean-square scaling, which is faster to compute.
+
+59. SwiGLU replaces GELU activation with a gated linear unit, often leading to better perplexity with the same parameter count.
+
+60. RoPE (Rotary Position Embedding) encodes position information via rotation matrices in the complex plane, preserving relative positional relationships.
+
+61. ALiBi (Attention with Linear Biases) adds linear biases to attention scores based on distance, removing the need for explicit positional embeddings.
+
+62. Multi-head attention projects queries, keys, and values into multiple subspaces, allowing the model to attend to different relationship types simultaneously.
+
+63. Grouped Query Attention (GQA) shares key and value heads across multiple query heads, reducing KV cache size with minimal quality loss.
+
+64. Multi-query attention (MQA) uses a single key and value head for all query heads, drastically cutting KV cache memory at the cost of some expressiveness.
+
+65. Sliding window attention restricts attention to a local context window, reducing computational complexity from quadratic to linear with respect to sequence length.
+
+66. Sparse attention patterns, such as strided or fixed patterns, allow the model to focus on relevant parts of the context, lowering FLOPs.
+
+67. Linear attention approximates the softmax function with a linear kernel, achieving O(N) complexity instead of O(N^2), though it may lose global context.
+
+68. FlashInfer provides highly optimized kernels for various attention variants, including causal, sliding window, and block-sparse

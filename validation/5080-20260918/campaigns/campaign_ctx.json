@@ -1,0 +1,282 @@
+{
+ "name": "ctx-sweep-greedy",
+ "repo": "/repo",
+ "models_dir": "/models",
+ "artifact": "qwen3_8_27b_minq4_mtpq4_visionq4.ninfer",
+ "model_id": "qwen3.8-27b-16gb",
+ "fixtures_dir": "/fixtures",
+ "out_dir": "/out/ctx-sweep-greedy",
+ "port": 18199,
+ "container": "ninfer-bench",
+ "default_config": {
+  "max_context": 124928,
+  "kv_capacity": 124928,
+  "kv_dtype": "i4",
+  "prefill_chunk": 64,
+  "cuda_graph": false,
+  "prefix_reuse": false,
+  "greedy": true,
+  "max_concurrency": 1,
+  "default_max_tokens": 4096
+ },
+ "blocks": [
+  {
+   "tag": "mtp3",
+   "config": {
+    "spec": "mtp",
+    "draft_tokens": 3
+   },
+   "requests": [
+    {
+     "fixture": "long_niah_8k",
+     "max_new": 128,
+     "thinking": false,
+     "seed": 1001
+    },
+    {
+     "fixture": "long_niah_8k",
+     "max_new": 128,
+     "thinking": false,
+     "seed": 1002
+    },
+    {
+     "fixture": "long_niah_8k",
+     "max_new": 128,
+     "thinking": false,
+     "seed": 1003
+    },
+    {
+     "fixture": "long_niah_8k",
+     "max_new": 128,
+     "thinking": false,
+     "seed": 1004
+    },
+    {
+     "fixture": "long_niah_8k",
+     "max_new": 128,
+     "thinking": false,
+     "seed": 1005
+    },
+    {
+     "fixture": "niah_32768",
+     "max_new": 128,
+     "thinking": false,
+     "seed": 1001
+    },
+    {
+     "fixture": "niah_32768",
+     "max_new": 128,
+     "thinking": false,
+     "seed": 1002
+    },
+    {
+     "fixture": "niah_32768",
+     "max_new": 128,
+     "thinking": false,
+     "seed": 1003
+    },
+    {
+     "fixture": "niah_32768",
+     "max_new": 128,
+     "thinking": false,
+     "seed": 1004
+    },
+    {
+     "fixture": "niah_32768",
+     "max_new": 128,
+     "thinking": false,
+     "seed": 1005
+    },
+    {
+     "fixture": "long_niah_64k",
+     "max_new": 128,
+     "thinking": false,
+     "seed": 1001
+    },
+    {
+     "fixture": "long_niah_64k",
+     "max_new": 128,
+     "thinking": false,
+     "seed": 1002
+    },
+    {
+     "fixture": "long_niah_64k",
+     "max_new": 128,
+     "thinking": false,
+     "seed": 1003
+    },
+    {
+     "fixture": "long_niah_64k",
+     "max_new": 128,
+     "thinking": false,
+     "seed": 1004
+    },
+    {
+     "fixture": "long_niah_64k",
+     "max_new": 128,
+     "thinking": false,
+     "seed": 1005
+    },
+    {
+     "fixture": "niah_98304",
+     "max_new": 128,
+     "thinking": false,
+     "seed": 1001
+    },
+    {
+     "fixture": "niah_98304",
+     "max_new": 128,
+     "thinking": false,
+     "seed": 1002
+    },
+    {
+     "fixture": "niah_98304",
+     "max_new": 128,
+     "thinking": false,
+     "seed": 1003
+    },
+    {
+     "fixture": "niah_123392",
+     "max_new": 128,
+     "thinking": false,
+     "seed": 1001
+    },
+    {
+     "fixture": "niah_123392",
+     "max_new": 128,
+     "thinking": false,
+     "seed": 1002
+    }
+   ]
+  },
+  {
+   "tag": "mtp0",
+   "config": {
+    "spec": null,
+    "draft_tokens": 0
+   },
+   "requests": [
+    {
+     "fixture": "long_niah_8k",
+     "max_new": 128,
+     "thinking": false,
+     "seed": 1001
+    },
+    {
+     "fixture": "long_niah_8k",
+     "max_new": 128,
+     "thinking": false,
+     "seed": 1002
+    },
+    {
+     "fixture": "long_niah_8k",
+     "max_new": 128,
+     "thinking": false,
+     "seed": 1003
+    },
+    {
+     "fixture": "long_niah_8k",
+     "max_new": 128,
+     "thinking": false,
+     "seed": 1004
+    },
+    {
+     "fixture": "long_niah_8k",
+     "max_new": 128,
+     "thinking": false,
+     "seed": 1005
+    },
+    {
+     "fixture": "niah_32768",
+     "max_new": 128,
+     "thinking": false,
+     "seed": 1001
+    },
+    {
+     "fixture": "niah_32768",
+     "max_new": 128,
+     "thinking": false,
+     "seed": 1002
+    },
+    {
+     "fixture": "niah_32768",
+     "max_new": 128,
+     "thinking": false,
+     "seed": 1003
+    },
+    {
+     "fixture": "niah_32768",
+     "max_new": 128,
+     "thinking": false,
+     "seed": 1004
+    },
+    {
+     "fixture": "niah_32768",
+     "max_new": 128,
+     "thinking": false,
+     "seed": 1005
+    },
+    {
+     "fixture": "long_niah_64k",
+     "max_new": 128,
+     "thinking": false,
+     "seed": 1001
+    },
+    {
+     "fixture": "long_niah_64k",
+     "max_new": 128,
+     "thinking": false,
+     "seed": 1002
+    },
+    {
+     "fixture": "long_niah_64k",
+     "max_new": 128,
+     "thinking": false,
+     "seed": 1003
+    },
+    {
+     "fixture": "long_niah_64k",
+     "max_new": 128,
+     "thinking": false,
+     "seed": 1004
+    },
+    {
+     "fixture": "long_niah_64k",
+     "max_new": 128,
+     "thinking": false,
+     "seed": 1005
+    },
+    {
+     "fixture": "niah_98304",
+     "max_new": 128,
+     "thinking": false,
+     "seed": 1001
+    },
+    {
+     "fixture": "niah_98304",
+     "max_new": 128,
+     "thinking": false,
+     "seed": 1002
+    },
+    {
+     "fixture": "niah_98304",
+     "max_new": 128,
+     "thinking": false,
+     "seed": 1003
+    },
+    {
+     "fixture": "niah_123392",
+     "max_new": 128,
+     "thinking": false,
+     "seed": 1001
+    },
+    {
+     "fixture": "niah_123392",
+     "max_new": 128,
+     "thinking": false,
+     "seed": 1002
+    }
+   ]
+  }
+ ]
+}

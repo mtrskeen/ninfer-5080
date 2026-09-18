@@ -1,0 +1,161 @@
+2. In contrast, the prefill phase is compute bound, as the massive matrix multiplications required to process the entire prompt utilize high parallelism across the GPU cores.
+
+3. Quantization reduces memory bandwidth requirements by storing weights in lower precision formats, such as INT8 or FP16, instead of standard FP32.
+
+4. Kernel fusion combines multiple small operations into a single kernel launch to minimize the overhead associated with starting and stopping execution threads.
+
+5. Memory hierarchy optimization involves arranging data access patterns to maximize cache hit rates, thereby reducing costly main memory reads.
+
+6. The roofline model provides a theoretical upper bound on performance based on the ratio of arithmetic intensity to available memory bandwidth.
+
+7. Arithmetic intensity is defined as the number of floating-point operations performed per byte of memory accessed, serving as a key metric for classifying workloads.
+
+8. Low-precision inference accelerators are designed specifically to handle reduced-bit-width arithmetic, offering higher throughput than general-purpose GPUs for specific tasks.
+
+9. Batch size scaling allows multiple independent sequences to be processed simultaneously, improving hardware utilization during the prefill stage.
+
+10. Continuous batching dynamically inserts new requests into ongoing inference batches, maximizing throughput without waiting for all sequences to reach the same length.
+
+11. Paged attention manages virtual memory for key-value caches, allowing non-contiguous physical memory blocks to be mapped to logical pages.
+
+12. The key-value cache grows linearly with sequence length, posing significant memory pressure that necessitates sophisticated management strategies.
+
+13. Speculative decoding uses a smaller, faster draft model to propose tokens, which are then verified in parallel by a larger target model.
+
+14. Verification cost in speculative decoding remains constant regardless of the number of proposed tokens, provided they are accepted, leading to net speedups.
+
+15. Lookahead decoding predicts multiple future tokens in a single forward pass, reducing the sequential dependency inherent in autoregressive generation.
+
+16. Tree-based speculative decoding branches possible token paths, increasing the probability that at least one branch matches the target model's output.
+
+17. Hardware heterogeneity in edge devices requires adaptive inference engines that can select optimal kernels based on available compute units.
+
+18. Dynamic voltage and frequency scaling adjusts processor power consumption in real-time to balance performance against thermal constraints.
+
+19. Thermal throttling occurs when sustained high load causes temperature to exceed safe limits, resulting in automatic clock speed reductions.
+
+20. Power efficiency per token is a critical metric for mobile deployment, measured in joules consumed to generate a single character of output.
+
+21. Model pruning removes redundant weights from neural networks, reducing both memory footprint and computational complexity with minimal accuracy loss.
+
+22. Structured pruning eliminates entire filters or channels rather than individual weights, allowing the remaining network to run efficiently on standard hardware.
+
+23. Knowledge distillation transfers the learned representations of a large teacher model to a smaller student model, preserving performance at reduced cost.
+
+24. Logit distillation focuses on matching the output probability distributions of the teacher and student models rather than intermediate layer activations.
+
+25. Feature distillation aligns the internal representations of the student model with those of the teacher, encouraging similar decision boundaries.
+
+26. Mixed precision training utilizes different precisions for different operations, typically using FP16 for forward passes and FP32 for weight updates.
+
+27. Loss scaling prevents underflow in FP16 gradients by multiplying them by a factor before backpropagation, restoring stability during optimization.
+
+28. Automatic mixed precision (AMP) tools automatically identify layers suitable for low precision and apply appropriate scaling factors without manual intervention.
+
+29. Tensor Core acceleration leverages specialized silicon units that perform matrix multiply-accumulate operations at significantly higher rates than general CUDA cores.
+
+30. Sparsity-aware kernels exploit zero-valued weights in pruned networks to skip unnecessary computations, effectively doubling effective throughput.
+
+31. Compression algorithms like Huffman coding reduce the size of model artifacts during storage and transmission, impacting cold-start times.
+
+32. Model serialization formats such as ONNX provide a standard interface for deploying trained models across diverse hardware backends.
+
+33. Graph optimization transforms the computational graph to eliminate dead code and redundant operations before compilation.
+
+34. Constant folding evaluates subgraphs with static inputs at compile time, replacing them with pre-computed results to save runtime computation.
+
+35. Common subexpression elimination identifies identical subgraphs within the network and reuses their computed results to avoid duplicate work.
+
+36. Loop unrolling in inference loops expands iterations at compile time, exposing more instruction-level parallelism to the processor.
+
+37. Vectorization instructions like AVX-512 allow multiple data elements to be processed in a single cycle, significantly boosting throughput for dense operations.
+
+38. SIMD (Single Instruction, Multiple Data) execution is fundamental to modern CPU inference, requiring data alignment for maximum efficiency.
+
+39. Branch prediction accuracy impacts pipeline efficiency; inference graphs with predictable control flow benefit most from deep pipelines.
+
+40. Cache line alignment ensures that memory accesses do not span multiple cache lines, preventing unnecessary fetches and latency penalties.
+
+41. Prefetching instructions hint to the memory controller about upcoming data needs, hiding latency by loading data before it is strictly required.
+
+42. Non-temporal stores bypass the cache hierarchy for large buffer writes, preventing pollution of frequently accessed data.
+
+43. Double buffering techniques alternate between two memory buffers to overlap computation and data transfer, eliminating idle cycles.
+
+44. Pipelined execution stages separate fetch, decode, execute, and write-back phases, allowing multiple instructions to be in flight simultaneously.
+
+45. Out-of-order execution allows the processor to execute instructions as soon as their operands are ready, regardless of program order.
+
+46. Register pressure limits the number of active variables; excessive register usage forces spills to memory, degrading performance.
+
+47. Inlining small function calls eliminates call overhead and enables further optimizations across function boundaries.
+
+48. Dead store elimination removes assignments to variables that are never read subsequently, saving write bandwidth.
+
+49. Partial redundancy elimination hoists invariant computations out of loops, calculating them once instead of on every iteration.
+
+50. Loop invariant code motion moves calculations that do not depend on loop indices outside the loop structure.
+
+51. Induction variable replacement simplifies loop index calculations, facilitating better vectorization and addressing mode generation.
+
+52. Memory coalescing ensures that threads in a warp access contiguous memory addresses, maximizing bandwidth utilization on GPUs.
+
+53. Bank conflicts in shared memory occur when multiple threads access the same memory bank in the same cycle, causing serialization.
+
+54. Shared memory tiling divides global memory data into smaller tiles that fit in fast on-chip memory, reducing global memory traffic.
+
+55. Warp divergence occurs when threads within a warp take different branch paths, forcing the hardware to serialize execution.
+
+56. Occupancy refers to the ratio of active warps to the maximum possible warps on a streaming multiprocessor, affecting latency hiding.
+
+57. Latency hiding relies on high occupancy to keep the execution units busy while other warps wait for memory accesses.
+
+58. Instruction cache misses stall the pipeline until the required machine code is fetched from main memory.
+
+59. Text prefetching loads upcoming instruction streams into the instruction cache proactively.
+
+60. Data cache partitioning allocates specific portions of the cache to different types of data to prevent thrashing.
+
+61. Write-back caching delays writing modified data to main memory until the cache line is evicted, reducing write traffic.
+
+62. Write-through caching updates main memory immediately upon a write operation, ensuring consistency at the cost of bandwidth.
+
+63. Cache coherence protocols manage synchronization of data copies across multiple processor cores.
+
+64. Directory-based coherence tracks which caches hold copies of each memory line, enabling efficient invalidation.
+
+65. Snooping-based coherence broadcasts update messages to all caches, simpler but scaling poorly with core count.
+
+66. NUMA (Non-Uniform Memory Access) architectures require awareness of memory locality to avoid remote memory access penalties.
+
+67. Thread pinning assigns specific threads to specific CPU sockets to ensure local memory access.
+
+68. Memory interleaving distributes address bits across multiple memory channels to increase aggregate bandwidth.
+
+69. Channel redundancy provides fault tolerance by allowing continued operation if one memory channel fails.
+
+70. Error-correcting code (ECC) memory detects and corrects single-bit errors, enhancing system reliability.
+
+71. Scrubbing operations periodically read and rewrite memory contents to detect and fix latent errors before they propagate.
+
+72. Volatile memory loss upon power failure necessitates checkpointing or non-volatile alternatives for stateful applications.
+
+73. Non-volatile memory (NVM) technologies like Intel Optane persist data without power, blurring the line between storage and memory.
+
+74. Byte-addressable NVM allows direct memory mapping, enabling traditional pointer arithmetic for persistent data structures.
+
+75. Persistence semantics define exactly when data becomes durable, requiring explicit flush or fence instructions.
+
+76. Transactional memory guarantees atomicity of multi-step updates, ensuring observers see either the old or new state.
+
+77. Write atomicity ensures that a sequence of writes appears to happen instantaneously to other cores.
+
+78. Memory ordering constraints specify the relative visibility of writes to different memory locations.
+
+79. Store buffering holds written data in a buffer until it is committed, complicating ordering guarantees.
+
+80. Load-store forwarding allows a load to read data from a preceding store in the buffer, improving performance.
+
+81. Store-to-load forwarding hazards must be carefully managed to prevent reading stale data.
+
+82. Fence instructions act as barriers, enforcing order

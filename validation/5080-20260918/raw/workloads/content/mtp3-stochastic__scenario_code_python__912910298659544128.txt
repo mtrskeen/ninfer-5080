@@ -1,0 +1,533 @@
+# Deterministic Async GPU Job Runner
+
+## Design Overview
+
+The package `gpujobrunner` provides:
+
+1. **Manifest-driven execution** — reads a JSON manifest describing jobs
+2. **Single active GPU job enforcement** — semaphore ensures exactly one job runs at a time on the GPU
+3. **Atomic state persistence** — writes to temp file, then `os.replace()` for crash safety
+4. **Resume support** — completed/failed jobs are skipped on restart
+5. **Structured JSONL event streaming** — every lifecycle transition emits a JSON line
+6. **SIGINT handling** — graceful cancellation of the in-flight job
+7. **Secret redaction** — configured secrets are replaced in all emitted events
+
+---
+
+## File: `pyproject.toml`
+
+```toml
+[build-system]
+requires = ["setuptools>=68.0", "wheel"]
+build-backend = "setuptools.backends._legacy:_Backend"
+
+[project]
+name = "gpujobrunner"
+version = "1.0.0"
+description = "Deterministic asynchronous GPU job runner with atomic state, resume, and structured events"
+readme = "README.md"
+requires-python = ">=3.11"
+license = { text = "MIT" }
+authors = [
+    { name = "GPU Job Runner Team" },
+]
+classifiers = [
+    "Programming Language :: Python :: 3.11",
+    "Topic :: System :: Distributed Computing",
+    "Framework :: AsyncIO",
+]
+dependencies = []
+
+[project.optional-dependencies]
+dev = [
+    "pytest>=7.4",
+    "pytest-asyncio>=0.23",
+    "pytest-cov>=4.1",
+]
+
+[tool.setuptools.packages.find]
+include = ["gpujobrunner*"]
+
+[tool.pytest.ini_options]
+asyncio_mode = "auto"
+testpaths = ["tests"]
+```
+
+---
+
+## File: `gpujobrunner/__init__.py`
+
+```python
+"""gpujobrunner – deterministic asynchronous GPU job runner."""
+
+from gpujobrunner.manifest import Manifest, JobSpec
+from gpujobrunner.state import StateStore
+from gpujobrunner.events import EventStream, EventType
+from gpujobrunner.runner import JobRunner
+from gpujobrunner.redaction import SecretRedactor
+
+__all__ = [
+    "Manifest",
+    "JobSpec",
+    "StateStore",
+    "EventStream",
+    "EventType",
+    "JobRunner",
+    "SecretRedactor",
+]
+```
+
+---
+
+## File: `gpujobrunner/manifest.py`
+
+```python
+"""Manifest parsing and validation for the GPU job runner."""
+
+from __future__ import annotations
+
+import json
+import re
+import uuid
+from dataclasses import dataclass, field
+from pathlib import Path
+from typing import Any
+
+
+@dataclass(frozen=True)
+class JobSpec:
+    """Immutable description of a single GPU job from the manifest."""
+
+    job_id: str
+    name: str
+    command: list[str]
+    env: dict[str, str] = field(default_factory=dict)
+    timeout_seconds: float = 300.0
+    retries: int = 0
+    tags: tuple[str, ...] = ()
+    metadata: dict[str, Any] = field(default_factory=dict)
+
+    @property
+    def unique_key(self) -> str:
+        """Stable key used for resume bookkeeping (deterministic per manifest entry)."""
+        return self.job_id
+
+
+class ManifestError(Exception):
+    """Raised when the manifest is malformed or fails validation."""
+
+
+_JOB_ID_RE = re.compile(r"^[a-zA-Z0-9][a-zA-Z0-9_\-\.]{0,127}$")
+
+
+def _validate_job_id(job_id: str) -> None:
+    if not _JOB_ID_RE.match(job_id):
+        raise ManifestError(
+            f"Invalid job_id {job_id!r}: must match {_JOB_ID_RE.pattern}"
+        )
+
+
+def _validate_command(command: list[str]) -> None:
+    if not command:
+        raise ManifestError("command must be a non-empty list of strings")
+    for part in command:
+        if not isinstance(part, str):
+            raise ManifestError(f"All command elements must be strings, got {type(part).__name__}")
+
+
+def _validate_env(env: dict[str, str]) -> None:
+    for k, v in env.items():
+        if not isinstance(k, str):
+            raise ManifestError(f"env keys must be strings, got {type(k).__name__}")
+        if not isinstance(v, str):
+            raise ManifestError(f"env values must be strings, got {type(v).__name__} for key {k!r}")
+
+
+def _validate_tags(tags: tuple[str, ...]) -> None:
+    for t in tags:
+        if not isinstance(t, str):
+            raise ManifestError(f"tags must be strings, got {type(t).__name__}")
+
+
+class Manifest:
+    """Parsed and validated job manifest."""
+
+    def __init__(self, jobs: list[JobSpec], schema_version: str = "1.0"):
+        seen: set[str] = set()
+        for job in jobs:
+            if job.unique_key in seen:
+                raise ManifestError(f"Duplicate job_id: {job.unique_key}")
+            seen.add(job.unique_key)
+        self.jobs = jobs
+        self.schema_version = schema_version
+
+    @classmethod
+    def from_file(cls, path: str | Path) -> Manifest:
+        p = Path(path)
+        if not p.exists():
+            raise ManifestError(f"Manifest file not found: {p}")
+        raw = p.read_text(encoding="utf-8")
+        return cls.from_string(raw)
+
+    @classmethod
+    def from_string(cls, raw: str) -> Manifest:
+        try:
+            data = json.loads(raw)
+        except json.JSONDecodeError as exc:
+            raise ManifestError(f"Manifest is not valid JSON: {exc}") from exc
+
+        if not isinstance(data, dict):
+            raise ManifestError("Manifest root must be a JSON object")
+
+        schema_version = data.get("schema_version", "1.0")
+        if not isinstance(schema_version, str):
+            raise ManifestError("schema_version must be a string")
+
+        raw_jobs = data.get("jobs")
+        if not isinstance(raw_jobs, list):
+            raise ManifestError("'jobs' must be a list")
+
+        jobs: list[JobSpec] = []
+        for i, raw_job in enumerate(raw_jobs):
+            if not isinstance(raw_job, dict):
+                raise ManifestError(f"jobs[{i}] must be an object")
+
+            job_id = raw_job.get("id")
+            if not isinstance(job_id, str) or not job_id:
+                raise ManifestError(f"jobs[{i}].id must be a non-empty string")
+            _validate_job_id(job_id)
+
+            name = raw_job.get("name", job_id)
+            if not isinstance(name, str):
+                raise ManifestError(f"jobs[{i}].name must be a string")
+
+            command = raw_job.get("command")
+            if not isinstance(command, list):
+                raise ManifestError(f"jobs[{i}].command must be a list")
+            _validate_command(command)
+
+            env = raw_job.get("env", {})
+            if not isinstance(env, dict):
+                raise ManifestError(f"jobs[{i}].env must be an object")
+            _validate_env(env)
+
+            timeout = raw_job.get("timeout_seconds", 300.0)
+            if not isinstance(timeout, (int, float)) or timeout <= 0:
+                raise ManifestError(f"jobs[{i}].timeout_seconds must be a positive number")
+
+            retries = raw_job.get("retries", 0)
+            if not isinstance(retries, int) or retries < 0:
+                raise ManifestError(f"jobs[{i}].retries must be a non-negative integer")
+
+            tags_raw = raw_job.get("tags", [])
+            if not isinstance(tags_raw, list):
+                raise ManifestError(f"jobs[{i}].tags must be a list")
+            tags = tuple(tags_raw)
+            _validate_tags(tags)
+
+            metadata = raw_job.get("metadata", {})
+            if not isinstance(metadata, dict):
+                raise ManifestError(f"jobs[{i}].metadata must be an object")
+
+            jobs.append(
+                JobSpec(
+                    job_id=job_id,
+                    name=name,
+                    command=command,
+                    env=env,
+                    timeout_seconds=float(timeout),
+                    retries=retries,
+                    tags=tags,
+                    metadata=metadata,
+                )
+            )
+
+        return cls(jobs, schema_version=schema_version)
+
+    def to_dict(self) -> dict[str, Any]:
+        return {
+            "schema_version": self.schema_version,
+            "jobs": [
+                {
+                    "id": j.job_id,
+                    "name": j.name,
+                    "command": j.command,
+                    "env": j.env,
+                    "timeout_seconds": j.timeout_seconds,
+                    "retries": j.retries,
+                    "tags": list(j.tags),
+                    "metadata": j.metadata,
+                }
+                for j in self.jobs
+            ],
+        }
+```
+
+---
+
+## File: `gpujobrunner/state.py`
+
+```python
+"""Atomic persistent state store for job completion tracking."""
+
+from __future__ import annotations
+
+import json
+import os
+import tempfile
+import time
+from dataclasses import dataclass, field
+from enum import Enum
+from pathlib import Path
+from typing import Any
+
+
+class JobStatus(str, Enum):
+    PENDING = "pending"
+    RUNNING = "running"
+    COMPLETED = "completed"
+    FAILED = "failed"
+    CANCELLED = "cancelled"
+
+
+@dataclass
+class JobRecord:
+    """Persistent record for a single job."""
+
+    job_id: str
+    status: JobStatus = JobStatus.PENDING
+    exit_code: int | None = None
+    started_at: float | None = None
+    finished_at: float | None = None
+    attempts: int = 0
+    error_message: str | None = None
+    extra: dict[str, Any] = field(default_factory=dict)
+
+    def to_dict(self) -> dict[str, Any]:
+        d: dict[str, Any] = {
+            "job_id": self.job_id,
+            "status": self.status.value,
+            "exit_code": self.exit_code,
+            "started_at": self.started_at,
+            "finished_at": self.finished_at,
+            "attempts": self.attempts,
+            "error_message": self.error_message,
+        }
+        if self.extra:
+            d["extra"] = self.extra
+        return d
+
+    @classmethod
+    def from_dict(cls, d: dict[str, Any]) -> JobRecord:
+        return cls(
+            job_id=d["job_id"],
+            status=JobStatus(d.get("status", "pending")),
+            exit_code=d.get("exit_code"),
+            started_at=d.get("started_at"),
+            finished_at=d.get("finished_at"),
+            attempts=d.get("attempts", 0),
+            error_message=d.get("error_message"),
+            extra=d.get("extra", {}),
+        )
+
+
+class StateStore:
+    """
+    Persists job state atomically.
+
+    The state file is written to a temporary file in the same directory,
+    then moved into place via ``os.replace`` which is atomic on POSIX.
+    This guarantees that readers never observe a partially-written file.
+    """
+
+    def __init__(self, path: str | Path):
+        self.path = Path(path)
+        self.path.parent.mkdir(parents=True, exist_ok=True)
+        self._records: dict[str, JobRecord] = {}
+        self._load()
+
+    def _load(self) -> None:
+        if not self.path.exists():
+            return
+        try:
+            raw = self.path.read_text(encoding="utf-8")
+            data = json.loads(raw)
+        except (json.JSONDecodeError, OSError):
+            # Corrupt or unreadable state; start fresh
+            return
+
+        if not isinstance(data, dict):
+            return
+
+        records = data.get("records", {})
+        if not isinstance(records, dict):
+            return
+
+        for job_id, rec in records.items():
+            if isinstance(rec, dict):
+                try:
+                    self._records[job_id] = JobRecord.from_dict(rec)
+                except (KeyError, ValueError):
+                    pass
+
+    def _save(self) -> None:
+        """Atomically persist current state to disk."""
+        payload = {
+            "version": 1,
+            "saved_at": time.time(),
+            "records": {jid: rec.to_dict() for jid, rec in self._records.items()},
+        }
+        content = json.dumps(payload, indent=2, sort_keys=True)
+
+        # Write to temp file in same directory, then atomic rename
+        fd, tmp_path = tempfile.mkstemp(
+            dir=str(self.path.parent), prefix=".state_", suffix=".tmp"
+        )
+        try:
+            with os.fdopen(fd, "w", encoding="utf-8") as f:
+                f.write(content)
+                f.flush()
+                os.fsync(f.fileno())
+            os.replace(tmp_path, str(self.path))
+        except BaseException:
+            # Clean up temp file on failure
+            try:
+                os.unlink(tmp_path)
+            except OSError:
+                pass
+            raise
+
+    # -- Public API -------------------------------------------------------
+
+    def get(self, job_id: str) -> JobRecord | None:
+        return self._records.get(job_id)
+
+    def set(self, job_id: str, record: JobRecord) -> None:
+        self._records[job_id] = record
+        self._save()
+
+    def mark_running(self, job_id: str, now: float | None = None) -> JobRecord:
+        ts = now if now is not None else time.time()
+        existing = self._records.get(job_id)
+        if existing is None:
+            rec = JobRecord(job_id=job_id, status=JobStatus.RUNNING, started_at=ts, attempts=1)
+        else:
+            rec = JobRecord(
+                job_id=job_id,
+                status=JobStatus.RUNNING,
+                exit_code=None,
+                started_at=ts,
+                finished_at=None,
+                attempts=existing.attempts + 1,
+                error_message=None,
+                extra=existing.extra,
+            )
+        self._records[job_id] = rec
+        self._save()
+        return rec
+
+    def mark_completed(self, job_id: str, exit_code: int = 0, now: float | None = None) -> JobRecord:
+        ts = now if now is not None else time.time()
+        existing = self._records.get(job_id)
+        attempts = existing.attempts if existing else 1
+        rec = JobRecord(
+            job_id=job_id,
+            status=JobStatus.COMPLETED,
+            exit_code=exit_code,
+            started_at=existing.started_at if existing else None,
+            finished_at=ts,
+            attempts=attempts,
+            extra=existing.extra if existing else {},
+        )
+        self._records[job_id] = rec
+        self._save()
+        return rec
+
+    def mark_failed(self, job_id: str, exit_code: int, error_message: str | None = None, now: float | None = None) -> JobRecord:
+        ts = now if now is not None else time.time()
+        existing = self._records.get(job_id)
+        attempts = existing.attempts if existing else 1
+        rec = JobRecord(
+            job_id=job_id,
+            status=JobStatus.FAILED,
+            exit_code=exit_code,
+            started_at=existing.started_at if existing else None,
+            finished_at=ts,
+            attempts=attempts,
+            error_message=error_message,
+            extra=existing.extra if existing else {},
+        )
+        self._records[job_id] = rec
+        self._save()
+        return rec
+
+    def mark_cancelled(self, job_id: str, now: float | None = None) -> JobRecord:
+        ts = now if now is not None else time.time()
+        existing = self._records.get(job_id)
+        attempts = existing.attempts if existing else 1
+        rec = JobRecord(
+            job_id=job_id,
+            status=JobStatus.CANCELLED,
+            exit_code=None,
+            started_at=existing.started_at if existing else None,
+            finished_at=ts,
+            attempts=attempts,
+            error_message="Cancelled by user (SIGINT)",
+            extra=existing.extra if existing else {},
+        )
+        self._records[job_id] = rec
+        self._save()
+        return rec
+
+    def is_terminal(self, job_id: str) -> bool:
+        rec = self._records.get(job_id)
+        if rec is None:
+            return False
+        return rec.status in (JobStatus.COMPLETED, JobStatus.FAILED, JobStatus.CANCELLED)
+
+    def pending_jobs(self, all_job_ids: list[str]) -> list[str]:
+        """Return job IDs that have not reached a terminal state."""
+        return [jid for jid in all_job_ids if not self.is_terminal(jid)]
+
+    def all_records(self) -> dict[str, JobRecord]:
+        return dict(self._records)
+```
+
+---
+
+## File: `gpujobrunner/events.py`
+
+```python
+"""Structured JSONL event streaming with secret redaction."""
+
+from __future__ import annotations
+
+import asyncio
+import json
+import time
+from dataclasses import dataclass, field
+from enum import Enum
+from typing import Any, TextIO
+
+
+class EventType(str, Enum):
+    RUNNER_START = "runner_start"
+    RUNNER_FINISH = "runner_finish"
+    JOB_ENQUEUED = "job_enqueued"
+    JOB_STARTED = "job_started"
+    JOB_COMPLETED = "job_completed"
+    JOB_FAILED = "job_failed"
+    JOB_CANCELLED = "job_cancelled"
+    JOB_RETRYING = "job_retrying"
+    SIGINT_RECEIVED = "sigint_received"
+    ERROR = "error"
+    INFO = "info"
+
+
+@dataclass
+class Event:
+    """A single structured event."""
+
+    type: EventType
+    timestamp: float
+    data:

@@ -1,0 +1,478 @@
+Below is a complete, self-contained TypeScript 5 service. It has **zero third‑party runtime dependencies** (only `node:test` for tests), uses strict types throughout, parses NDJSON incrementally with bounded memory, and exposes `/health`, `/summary`, and `/runs/:id`.
+
+```
+metrics-service/
+├── package.json
+├── tsconfig.json
+├── README.md            # operational guide
+└── src/
+    ├── index.ts         # entry point (wires everything)
+    ├── types.ts         # strict domain + API types
+    ├── parser.ts        # incremental NDJSON parser
+    ├── validator.ts     # hand-rolled schema validation
+    ├── stats.ts         # mean / median / sample stddev
+    ├── store.ts         # in-memory aggregation (bounded)
+    ├── errors.ts        # typed error hierarchy
+    └── server.ts        # zero-dep HTTP server + routing
+```
+
+---
+
+## `package.json`
+
+```json
+{
+  "name": "metrics-service",
+  "version": "1.0.0",
+  "description": "Zero-dependency NDJSON request-metrics aggregator with health/summary/run endpoints.",
+  "type": "module",
+  "engines": { "node": ">=18" },
+  "scripts": {
+    "build": "tsc -p tsconfig.json",
+    "start": "node dist/index.js",
+    "dev": "tsx src/index.ts",
+    "test": "node --import tsx --test test/*.test.ts",
+    "typecheck": "tsc -p tsconfig.json --noEmit"
+  },
+  "dependencies": {},
+  "devDependencies": {
+    "@types/node": "^20.14.0",
+    "tsx": "^4.16.0",
+    "typescript": "^5.5.0"
+  }
+}
+```
+
+> Only dev dependencies are used (`typescript`, `@types/node`, `tsx`). There are **no third-party runtime/schema libraries**.
+
+---
+
+## `tsconfig.json`
+
+```json
+{
+  "compilerOptions": {
+    "target": "ES2022",
+    "module": "NodeNext",
+    "moduleResolution": "NodeNext",
+    "lib": ["ES2022"],
+    "outDir": "dist",
+    "rootDir": "src",
+    "strict": true,
+    "noUncheckedIndexedAccess": true,
+    "noImplicitOverride": true,
+    "noFallthroughCasesInSwitch": true,
+    "exactOptionalPropertyTypes": true,
+    "forceConsistentCasingInFileNames": true,
+    "esModuleInterop": true,
+    "skipLibCheck": true,
+    "declaration": true,
+    "sourceMap": true,
+    "resolveJsonModule": true
+  },
+  "include": ["src/**/*.ts"]
+}
+```
+
+A second config keeps the test files type-checked without polluting `dist`:
+
+```json
+// tsconfig.test.json
+{
+  "extends": "./tsconfig.json",
+  "compilerOptions": {
+    "rootDir": ".",
+    "outDir": "dist-test",
+    "noEmit": true
+  },
+  "include": ["src/**/*.ts", "test/**/*.ts"]
+}
+```
+
+---
+
+## `src/types.ts`
+
+Strict domain and API types. Note the discriminated union for validation results and the explicit `unknown`-safe shapes.
+
+```ts
+/** A single validated request-metrics record (NDJSON line). */
+export interface RequestMetricsRecord {
+  /** Globally unique run identifier (e.g. UUID or timestamp-based). */
+  runId: string;
+  /** Model name the request was served by (grouping key). */
+  model: string;
+  /** Fixture / dataset variant (grouping key). */
+  fixture: string;
+  /** Wall-clock time the record was produced, ISO-8601 string. */
+  timestamp: string;
+  /** End-to-end latency in milliseconds. Must be finite & >= 0. */
+  latencyMs: number;
+  /** Number of output tokens generated. Integer >= 0. */
+  outputTokens: number;
+  /** HTTP status code returned to the caller. */
+  statusCode: number;
+  /** Optional free-form tag list. */
+  tags?: string[];
+}
+
+/** The raw, unvalidated shape we accept off the wire. */
+export interface RawRequestMetrics {
+  runId?: unknown;
+  model?: unknown;
+  fixture?: unknown;
+  timestamp?: unknown;
+  latencyMs?: unknown;
+  outputTokens?: unknown;
+  statusCode?: unknown;
+  tags?: unknown;
+}
+
+/** Result of validating one record: either the value or a precise error. */
+export type ValidationOutcome =
+  | { ok: true; value: RequestMetricsRecord }
+  | { ok: false; error: ValidationError };
+
+/** Aggregated statistics over a set of records. */
+export interface GroupStats {
+  count: number;
+  meanLatencyMs: number;
+  medianLatencyMs: number;
+  sampleStdDevMs: number; // NaN when count < 2
+  minLatencyMs: number;
+  maxLatencyMs: number;
+  p95LatencyMs: number;
+  totalOutputTokens: number;
+  meanOutputTokens: number;
+  successCount: number; // 2xx/3xx
+  errorCount: number;   // 4xx/5xx
+  distinctModels: number;
+  distinctFixtures: number;
+}
+
+/** A group keyed by model+fixture. */
+export interface ModelFixtureGroup extends GroupStats {
+  model: string;
+  fixture: string;
+  lastUpdated: string; // ISO timestamp of most recent record in group
+}
+
+/** A per-run rollup (for /runs/:id). */
+export interface RunSummary extends GroupStats {
+  runId: string;
+  model: string;
+  fixture: string;
+  firstTimestamp: string;
+  lastTimestamp: string;
+}
+
+/** Overall service summary (for /summary). */
+export interface ServiceSummary {
+  generatedAt: string;
+  totalRecords: number;
+  acceptedRecords: number;
+  rejectedRecords: number;
+  distinctRuns: number;
+  groups: ModelFixtureGroup[];
+  runs: RunSummary[];
+  topGroupsByMeanLatency: Array<Pick<ModelFixtureGroup, 'model' | 'fixture' | 'meanLatencyMs' | 'count'>>;
+}
+
+/** Health payload (for /health). */
+export interface HealthReport {
+  status: 'ok' | 'degraded';
+  uptimeSeconds: number;
+  startedAt: string;
+  version: string;
+  bufferUsedBytes: number;
+  bufferLimitBytes: number;
+  pendingLineCount: number;
+  parsedLines: number;
+  acceptedLines: number;
+  rejectedLines: number;
+  activeRunCount: number;
+  activeGroupCount: number;
+  oldestEvictedRunAgeSeconds: number | null;
+}
+
+/** Typed error carrying machine-readable codes. */
+export type MalformedInputCode =
+  | 'MALFORMED_JSON'
+  | 'MISSING_FIELD'
+  | 'WRONG_TYPE'
+  | 'OUT_OF_RANGE'
+  | 'INVALID_TIMESTAMP'
+  | 'EMPTY_LINE_LIMIT_EXCEEDED';
+
+export class ValidationError extends Error {
+  readonly code: MalformedInputCode;
+  readonly field: string;
+  constructor(code: MalformedInputCode, field: string, message: string) {
+    super(message);
+    this.name = 'ValidationError';
+    this.code = code;
+    this.field = field;
+  }
+}
+
+/** Bounded-buffer configuration knobs. */
+export interface BufferLimits {
+  /** Max bytes held in the in-flight partial-line buffer before hard reject. */
+  maxLineBytes: number;
+  /** Max consecutive empty lines tolerated in a stream before an error event. */
+  maxConsecutiveEmptyLines: number;
+}
+
+/** Retention policy for the in-memory store. */
+export interface StoreLimits {
+  /** Max distinct runs kept before LRU eviction. */
+  maxRuns: number;
+  /** Max distinct model+fixture groups kept before LRU eviction. */
+  maxGroups: number;
+  /** Max records retained per run before dropping oldest samples. */
+  maxSamplesPerRun: number;
+  /** Max age (ms) after which a run/group is considered stale and evicted. */
+  maxAgeMs: number;
+}
+```
+
+---
+
+## `src/errors.ts`
+
+Typed error hierarchy so callers can branch on `code`.
+
+```ts
+export class ServiceError extends Error {
+  readonly code: string;
+  readonly httpStatus: number;
+  constructor(code: string, message: string, httpStatus: number) {
+    super(message);
+    this.name = 'ServiceError';
+    this.code = code;
+    this.httpStatus = httpStatus;
+  }
+}
+
+export class NotFoundError extends ServiceError {
+  constructor(runId: string) {
+    super('NOT_FOUND', `run '${runId}' not found or was evicted`, 404);
+    this.name = 'NotFoundError';
+  }
+}
+
+export class BadRequestError extends ServiceError {
+  constructor(detail: string) {
+    super('BAD_REQUEST', detail, 400);
+    this.name = 'BadRequestError';
+  }
+}
+
+export class PayloadTooLargeError extends ServiceError {
+  constructor(bytes: number, limit: number) {
+    super('PAYLOAD_TOO_LARGE', `body ${bytes}B exceeds limit ${limit}B`, 413);
+    this.name = 'PayloadTooLargeError';
+  }
+}
+```
+
+---
+
+## `src/parser.ts`
+
+Incremental NDJSON parser. It accepts arbitrary byte chunks, splits on `\n`, keeps only the trailing partial line in a bounded buffer, and emits whole lines as UTF-8 strings. This is what makes it safe for streaming ingestion with bounded memory.
+
+```ts
+import { Buffer } from 'node:buffer';
+import type { BufferLimits } from './types.js';
+
+export type ParseEvent =
+  | { type: 'line'; line: string; lineBytes: number }
+  | { type: 'error'; code: 'LINE_TOO_LONG' | 'EMPTY_LINE_LIMIT'; detail: string };
+
+/**
+ * Stateful, incremental newline-delimited JSON parser.
+ * Feed it any number of chunks via `push`; it yields complete lines.
+ * Memory is bounded by `limits.maxLineBytes`.
+ */
+export class NdjsonParser {
+  private buf = Buffer.alloc(0);
+  private emptyStreak = 0;
+  private readonly limits: BufferLimits;
+  private readonly encoder = new TextEncoder();
+
+  constructor(limits: BufferLimits) {
+    this.limits = limits;
+  }
+
+  /** Reset internal state (e.g. between logical streams). */
+  reset(): void {
+    this.buf = Buffer.alloc(0);
+    this.emptyStreak = 0;
+  }
+
+  get bufferedBytes(): number {
+    return this.buf.length;
+  }
+
+  /**
+   * Consume a chunk, returning all complete lines plus any error events.
+   * Order is preserved: lines appear in stream order.
+   */
+  push(chunk: Uint8Array): ParseEvent[] {
+    const events: ParseEvent[] = [];
+    if (chunk.length > 0) {
+      this.buf = this.buf.length === 0 ? Buffer.from(chunk) : Buffer.concat([this.buf, chunk]);
+    }
+
+    while (true) {
+      const nl = this.buf.indexOf(0x0a); // '\n'
+      if (nl === -1) break;
+
+      const lineBytes = nl; // number of bytes before the newline
+      const lineBuf = this.buf.subarray(0, lineBytes);
+      this.buf = this.buf.subarray(lineBytes + 1);
+
+      // Strip a leading CR (CRLF tolerance) without re-allocating.
+      let start = 0;
+      if (lineBytes > 0 && lineBuf[0] === 0x0d) start = 1;
+      const trimmed = lineBuf.subarray(start);
+
+      if (trimmed.length === 0) {
+        this.emptyStreak += 1;
+        if (this.emptyStreak > this.limits.maxConsecutiveEmptyLines) {
+          events.push({
+            type: 'error',
+            code: 'EMPTY_LINE_LIMIT',
+            detail: `more than ${this.limits.maxConsecutiveEmptyLines} consecutive empty lines`,
+          });
+          this.emptyStreak = 0;
+        }
+        continue;
+      }
+
+      this.emptyStreak = 0;
+
+      if (lineBytes > this.limits.maxLineBytes) {
+        events.push({
+          type: 'error',
+          code: 'LINE_TOO_LONG',
+          detail: `line ${lineBytes}B exceeds maxLineBytes ${this.limits.maxLineBytes}`,
+        });
+        continue;
+      }
+
+      const text = this.decode(trimmed);
+      events.push({ type: 'line', line: text, lineBytes });
+    }
+
+    // Hard cap on residual buffer to guarantee bounded memory even mid-line.
+    if (this.buf.length > this.limits.maxLineBytes) {
+      events.push({
+        type: 'error',
+        code: 'LINE_TOO_LONG',
+        detail: `residual buffer ${this.buf.length}B exceeds maxLineBytes ${this.limits.maxLineBytes}; discarding partial line`,
+      });
+      this.buf = Buffer.alloc(0);
+    }
+
+    return events;
+  }
+
+  /** Flush any trailing partial line (no newline yet) at end-of-stream. */
+  flush(): ParseEvent[] {
+    const events: ParseEvent[] = [];
+    if (this.buf.length === 0) return events;
+
+    if (this.buf.length > this.limits.maxLineBytes) {
+      events.push({
+        type: 'error',
+        code: 'LINE_TOO_LONG',
+        detail: `final partial line ${this.buf.length}B exceeds maxLineBytes ${this.limits.maxLineBytes}`,
+      });
+    } else {
+      const text = this.decode(this.buf);
+      if (text.length > 0) events.push({ type: 'line', line: text, lineBytes: this.buf.length });
+    }
+    this.buf = Buffer.alloc(0);
+    return events;
+  }
+
+  private decode(b: Buffer): string {
+    // Decode through a fresh view so CRLF-tolerant slicing is correct.
+    const copy = Buffer.from(b);
+    return copy.toString('utf8');
+  }
+}
+```
+
+The unused `encoder` field is removed below to keep things clean — the decoder path uses `Buffer.toString`. I'll drop it in the final file (see note at end). Actually, to avoid dead code, here's the corrected final form of that private method only:
+
+```ts
+  private decode(b: Buffer): string {
+    return Buffer.from(b).toString('utf8');
+  }
+```
+
+---
+
+## `src/validator.ts`
+
+Hand-rolled schema validation — no third-party schema library. Each rule returns a precise `ValidationError` with a code and field.
+
+```ts
+import type {
+  RawRequestMetrics,
+  RequestMetricsRecord,
+  ValidationOutcome,
+} from './types.js';
+import { ValidationError } from './types.js';
+
+const MAX_TAG_COUNT = 32;
+const MAX_TAG_LENGTH = 128;
+const MAX_ID_LENGTH = 256;
+
+function isPlainObject(v: unknown): v is Record<string, unknown> {
+  return typeof v === 'object' && v !== null && !Array.isArray(v);
+}
+
+function requireStringField(
+  obj: Record<string, unknown>,
+  field: string,
+  maxLength: number,
+): string {
+  const v = obj[field];
+  if (v === undefined) throw new ValidationError('MISSING_FIELD', field, `missing required field '${field}'`);
+  if (typeof v !== 'string') throw new ValidationError('WRONG_TYPE', field, `'${field}' must be a string`);
+  if (v.length === 0) throw new ValidationError('OUT_OF_RANGE', field, `'${field}' must be non-empty`);
+  if (v.length > maxLength) throw new ValidationError('OUT_OF_RANGE', field, `'${field}' exceeds ${maxLength} chars`);
+  return v;
+}
+
+function requireNumberField(obj: Record<string, unknown>, field: string, check: (n: number) => string | null): number {
+  const v = obj[field];
+  if (v === undefined) throw new ValidationError('MISSING_FIELD', field, `missing required field '${field}'`);
+  if (typeof v !== 'number' || !Number.isFinite(v)) {
+    throw new ValidationError('WRONG_TYPE', field, `'${field}' must be a finite number`);
+  }
+  const problem = check(v);
+  if (problem) throw new ValidationError('OUT_OF_RANGE', field, problem);
+  return v;
+}
+
+function validateTimestamp(raw: unknown): string {
+  if (raw === undefined) throw new ValidationError('MISSING_FIELD', 'timestamp', `missing required field 'timestamp'`);
+  if (typeof raw !== 'string') throw new ValidationError('WRONG_TYPE', 'timestamp', `'timestamp' must be a string`);
+  const ms = Date.parse(raw);
+  if (Number.isNaN(ms)) throw new ValidationError('INVALID_TIMESTAMP', 'timestamp', `'timestamp' is not valid ISO-8601: ${raw}`);
+  return raw;
+}
+
+function validateTags(raw: unknown): string[] | undefined {
+  if (raw === undefined) return undefined;
+  if (!Array.isArray(raw)) throw new ValidationError('WRONG_TYPE', 'tags', `'tags' must be an array of strings`);
+  if (raw.length > MAX_TAG_COUNT) throw new ValidationError('OUT_OF_RANGE', 'tags', `too many tags (> ${MAX_TAG_COUNT})`);
+  const out: string[] = [];
+  for (let i = 0; i < raw.length; i++) {
+    const t = raw[i];
+    if (typeof t !== 'string') throw new ValidationError('WR

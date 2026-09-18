@@ -1,0 +1,283 @@
+The wind howled against the reinforced glass of the Aerie, a sound like a living thing clawing for entry. Inside, the observatory was a tomb of silence and darkness. The primary power grid had failed twenty minutes ago, leaving only the emergency backup batteries to hum a low, dying thrum in the walls.
+
+Elias Thorne, the station’s lead calibration engineer, stood in the center of the main control room. He was a man who lived by precision, by the millimeter and the nanosecond. But tonight, the universe had slipped its moorings.
+
+"Is anyone there?" Elias called out, his voice sounding thin in the vast, empty space. "Dr. Aris? Dr. Vane? Please respond."
+
+No answer came. The heavy steel door to the central dome—the heart of the facility where the main telescope sat—was locked from the inside. Elias could see the red light of the manual override switch glowing faintly through the peephole. It was engaged. Someone was trapped inside with the equipment, or worse, someone had been killed there.
+
+He checked his watch. 02:14 AM. The storm outside was intensifying, lashing the mountain peak with sleet that turned the world into a blur of white noise. If the backup battery died, the heating would stop. In this altitude, hypothermia was a slow, silent killer.
+
+Elias moved to the side console. His hands, usually steady as stone, trembled slightly. He wasn’t a detective; he was an engineer. He fixed things. He balanced equations. He didn’t solve murders. But the logic of the situation demanded it. If someone was dead, they were dead. If someone was alive, they needed to be found before the cold took them.
+
+He began his search, not with a magnifying glass, but with his senses. He walked the perimeter of the control room, running his fingers along the surfaces, feeling for heat signatures, for vibrations, for the subtle tell-tale signs of recent activity.
+
+***
+
+### Part I: The Warm Brass Key
+
+The first anomaly presented itself on the secondary desk, near the window overlooking the jagged peaks of the Rockies. It was a brass key, small and ornate, resting on a stack of technical manuals.
+
+Elias picked it up. It was warm. Not hot, not scalding, but distinctly warm, as if it had been held in a hand just moments before. In the frigid air of the observatory, which was already dropping below freezing due to the power loss, metal objects should have been ice-cold within seconds of being set down. For this key to retain body heat, it must have been dropped very recently, or perhaps removed from a pocket.
+
+Elias examined the teeth of the key. It was a standard pin tumbler design, but the cut was unique. He recognized it immediately. It was the master key for the ventilation shafts.
+
+Why would someone carry the ventilation key? The vents were used for airflow regulation during high-heat operations, such as when the telescope’s cooling systems were under stress. During a power failure, the fans spun down, and the vents were sealed to conserve thermal energy. To open them now would be to invite the freezing air of the mountain directly into the core machinery, risking catastrophic damage to the optics.
+
+Unless, of course, someone wanted to create a draft. Or hide something.
+
+Elias placed the key back on the desk, noting its position relative to the edge. It had slid off the corner. This implied haste. Fear, perhaps. Or panic. He made a mental note: *Subject was in the control room recently. Subject possessed the ventilation key. Subject left in a hurry.*
+
+He looked toward the darkened doorway leading to the corridor. The wind screamed louder, rattling the frame. The temperature gauge on the wall read -5°C and falling. He had time, but not much.
+
+***
+
+### Part II: The Upside-Down Star Chart
+
+Elias moved deeper into the facility, following the layout of the observatory. The corridors were narrow, lined with conduit pipes that ran with the remaining trickle of electricity. He passed the lab, the break room, and the dormitory block. All doors were closed. All lights were out.
+
+He stopped in front of the door to the Archive Room. It was ajar, just a crack. A sliver of moonlight, filtered through the storm clouds, spilled onto the floor.
+
+Elias pushed the door open. The room smelled of old paper and ozone. Shelves lined the walls, filled with decades of observational data, star maps, and logs. In the center of the room, on a large reading table, lay a single sheet of paper.
+
+It was a star chart. Specifically, it was a map of the Orion constellation, printed on high-quality archival paper. But it was wrong.
+
+Elias stepped closer, using his phone’s flashlight to illuminate the page. The stars were plotted correctly, but the orientation was inverted. North was South. East was West. The entire celestial sphere was flipped 180 degrees.
+
+To a casual observer, it might look like a printing error. To Elias, it was a scream.
+
+Star charts are tools of navigation and alignment. They are used to point the telescope at specific coordinates. If you feed an upside-down chart into the telescope’s computer system, you don’t just miss your target; you aim the instrument at the exact opposite side of the sky. You look away from what you want to see and focus on the void behind you.
+
+Why would someone print an upside-down chart?
+
+Elias remembered the incident report from three days prior. Dr. Aris, the astrophysicist, had been frustrated with the new software update. He had complained that the automated alignment routine was drifting, causing him to lose track of a rare pulsar he was studying. He had accused the engineering team of introducing bugs. He had threatened to bypass the digital systems and use manual overrides.
+
+An upside-down chart isn’t just a mistake; it’s a sabotage attempt. It’s a way to force the telescope to look at the wrong place, to waste hours of observation time, to frustrate the operator until they make a critical error. Or, more dangerously, to direct the high-power laser guide star—which was currently active despite the power failure, running on independent battery power—at a location that could interfere with satellite traffic or, theoretically, cause a localized electromagnetic surge if the targeting was miscalculated.
+
+Elias folded the chart carefully. It was dry. No fingerprints, no smudges. It had been placed here deliberately, likely after the power went out, when the lighting was dim enough to obscure the error, or perhaps in the chaos of the blackout, hoping no one would notice the inversion until it was too late.
+
+He tucked the chart into his jacket. *Clue two: Sabotage intended. Target: Telescope alignment. Motive: Disruption or accident.*
+
+***
+
+### Part III: Eleven Seconds of Silence
+
+Elias returned to the main control room. The air was getting colder. His breath plumed in front of him. He needed to find the voice recorder.
+
+In any high-stakes scientific environment, especially one dealing with volatile equipment, audio logging is standard protocol. The black box, as it was colloquially known, was mounted on the ceiling above the main console. It recorded everything said within a five-meter radius, saving the last forty-eight hours of data to a secure local drive.
+
+Elias climbed the maintenance ladder to reach the unit. The metal rungs were icy, biting into his gloves. He unscrewed the casing of the recorder. The internal LED blinked green, indicating it was still recording. He pressed the download button, transferring the data to his portable terminal.
+
+As the file loaded, he listened.
+
+01:30 PM – Routine checks.
+03:15 PM – Argument between Dr. Aris and Dr. Vane about funding.
+06:00 PM – Dinner. Laughter. Normalcy.
+11:45 PM – Power fluctuation warning.
+11:58 PM – Main breaker trips. Darkness.
+
+Then, silence.
+
+From 12:00 AM to 12:11 AM, the waveform was flat. A perfect, unbroken line of zero amplitude. Eleven seconds of absolute nothingness.
+
+Then, at 12:11 AM, the audio resumed. It was the sound of a heavy door slamming shut. And then, a sharp, high-pitched shriek. Not a human scream, but the mechanical whine of a servo motor straining against resistance.
+
+Elias frowned. Eleven seconds. Why would the microphone pick up nothing for eleven seconds?
+
+Microphones don’t fail that cleanly unless they are physically disabled. Covered, disconnected, or damaged.
+
+He looked at the timeline again. 12:00 AM was when the power went out. The emergency lights kicked on. The room was bathed in a dim, amber glow.
+
+Who was in the room?
+
+According to the logs, Dr. Aris had gone to the archive to retrieve the star chart. Dr. Vane had stayed in the control room to monitor the backup systems.
+
+If Dr. Vane was in the control room, why was there silence?
+
+Elias paused the recording at the end of the silence, right before the door slam. He played it back.
+
+*Click.*
+
+A tiny, almost inaudible click.
+
+Elias rewound it again. Slowed it down.
+
+It wasn’t a click. It was the sound of a fabric rustle. A sleeve brushing against the microphone housing.
+
+Someone had covered the mic.
+
+And then, the door slammed.
+
+This meant that whoever was in the control room at 12:00 AM had intentionally muted the recorder before the event that caused the door to slam. They knew they were being recorded. They wanted the next few seconds to be a blank space in the evidence.
+
+But why mute it for exactly eleven seconds?
+
+Elias calculated the distance from the control room door to the central dome door. It was a short hallway, maybe thirty meters. Walking speed. It shouldn’t take eleven seconds to cross it. Unless… the person wasn’t walking. They were running. Or, they were holding something heavy that slowed them down.
+
+Or, they were waiting for something to happen.
+
+Elias realized the implication. The silence didn’t cover the crime. It covered the *preparation*. The act that led to the door slamming.
+
+If the victim was in the dome, and the perpetrator was in the control room, the door slamming would be the perpetrator locking the victim in, or escaping.
+
+But the audio showed the slam *after* the silence. So the perpetrator was still in the control room when the door slammed. Which means the perpetrator did *not* go to the dome.
+
+So who locked the dome door?
+
+Elias felt a chill that had nothing to do with the weather. If the perpetrator was in the control room, and the door to the dome was locked from the inside, then the person inside the dome must have locked it themselves.
+
+Which meant the person inside the dome was alive.
+
+And they had locked themselves in.
+
+Why?
+
+***
+
+### Part IV: The Unsweetened Tea
+
+Elias descended from the ladder. He needed to check the break room. If someone had been in a state of high agitation, they might have sought comfort. Or distraction.
+
+The break room was a small, cozy space with a kettle, a microwave, and a small refrigerator. The lights were off, but the residual heat from the electric stove was fading fast.
+
+On the counter, sitting beside the sink, was a ceramic mug.
+
+Elias picked it up. It was cool to the touch, but not cold. There was liquid inside. He brought it to his nose.
+
+Tea.
+
+Not the sweet, sugary blend that most people preferred, especially in a stressful environment. This was pure, unsweetened black tea. Bitter. Astringent.
+
+Elias knew the habits of the staff. Dr. Aris drank chamomile, heavily sweetened with honey, to calm his nerves. Dr. Vane drank espresso, black and strong, to stay alert. The technician, young Miller, drank decaf, always with a splash of milk.
+
+Nobody drank plain, bitter black tea. Except Elias.
+
+Elias stared at the mug. It was his mug. The chipped handle, the faded logo of the university. He had left it here earlier in the day, intending to finish it before bed. He had taken a sip around 11:30 PM.
+
+If he had left it, why was it still full?
+
+He hadn’t finished it. He had poured a fresh cup, drunk half, and left the rest.
+
+But wait.
+
+He checked the timestamp on the voice recorder again. 11:58 PM. Power failure.
+
+If he had been in the break room at 11:58 PM, the recorder wouldn’t have picked up his voice, because the recorder was in the control room, fifty feet away.
+
+But the silence started at 12:00 AM.
+
+Elias remembered clearly. At 11:59 PM, he had been in the control room, checking the backup battery status. He saw Dr. Vane pacing by the window. He said, "Vane, keep an eye on the voltage. If it drops below 12 volts, we lose the heaters."
+
+Vane had nodded, looking pale. "I’m trying, Elias. It’s unstable."
+
+Elias had then walked to the break room to get water. He arrived at 11:59:30 PM. He filled his mug. He took a sip. He felt a sudden, intense dizziness. A wave of nausea hit him. He thought it was the altitude, or the stress.
+
+He had put the mug down and walked back to the control room.
+
+When he got back, at 12:00:05 PM, the lights flickered and died.
+
+He had assumed the dizziness was just fatigue. But now, looking at the mug, and remembering the timing, a terrible realization dawned on him.
+
+The tea wasn’t just unsweetened. It had been tampered with.
+
+He didn’t know how. He had prepared it himself. But had he?
+
+He thought back to the afternoon. He had seen Dr. Aris in the break room. Aris had been complaining about the tea. "This stuff tastes like dirt," Aris had said, stirring his own sweetened cup. "You engineers drink poison."
+
+Elias had laughed it off.
+
+But Aris had lingered. He had watched Elias prepare his cup.
+
+If Aris had added something to Elias’s tea, it would explain the dizziness. And it would explain the silence on the recorder.
+
+Because if Elias was drugged, he might have been incapacitated, or confused, allowing someone else to enter the control room, cover the mic, and manipulate the situation.
+
+But Elias was standing here. He was sober. He was thinking clearly.
+
+So the tea theory was a dead end? Or was it a misdirection?
+
+Elias looked at the mug again. The liquid level was lower than he remembered. He had drunk half. The remaining half was untouched.
+
+He poured the rest into the sink.
+
+He didn’t feel sick anymore. The dizziness had passed. Maybe it had been a brief episode. A momentary lapse in judgment caused by stress and caffeine withdrawal.
+
+Or maybe the drug had worn off quickly.
+
+He decided to trust his memory over his physical symptoms. He was fine. He was the detective.
+
+***
+
+### Part V: The Locked Dome
+
+Elias approached the central dome door. The red light of the manual override was still glowing. The door was solid steel, six inches thick. It was designed to withstand a hurricane.
+
+He tried the handle. Locked.
+
+He spoke into the intercom. "Dr. Aris? Dr. Vane? Can you hear me? It’s Elias. I need to come in."
+
+Silence.
+
+He pressed his ear against the door. He could hear a faint humming. Not the electrical hum of the servers, which were offline. It was a mechanical hum. The sound of the telescope’s tracking motors idling.
+
+The telescope was moving. Slowly, incrementally, it was panning across the sky.
+
+Elias checked the external sensors via his tablet. The telescope was pointing at a sector of the sky that contained no significant astronomical objects. Just empty space.
+
+It was aiming at the void.
+
+Just like the upside-down chart suggested.
+
+But why?
+
+Elias realized the trap. If the telescope was moving, it was consuming power from the backup battery. The backup battery was the only thing keeping the life support systems running. If the telescope drained the battery, the heaters would fail. The oxygen recycler would fail. Everyone inside would die of suffocation or freezing.
+
+Someone was trying to kill everyone by draining the power supply.
+
+And they had locked the door to prevent anyone from stopping it manually.
+
+Elias knew the manual override required a physical key. The master key.
+
+He reached into his pocket and pulled out the warm brass key.
+
+He inserted it into the lock. It fit perfectly.
+
+He turned it.
+
+The lock disengaged with a heavy clunk.
+
+The door swung open.
+
+Cold air rushed out, carrying the smell of machine oil and stale air.
+
+Inside, the dome was vast and dark. The telescope dominated the space, a massive arm extending upward through the open shutter. The shutter was closed, though. The telescope was pointed at the roof of the dome.
+
+There was no one there.
+
+The chair was empty. The console was dark.
+
+But on the floor, near the base of the telescope, lay a figure.
+
+It was Dr. Vane.
+
+He was unconscious, slumped against the leg of the telescope. He was breathing, shallowly, but he was alive.
+
+Next to him, lying face down, was Dr. Aris.
+
+Elias rushed to them. He checked their pulses. Both were weak, but present.
+
+He looked around the room. The console was intact. No signs of struggle. No blood.
+
+On the console, a small screen glowed. It displayed a text message.
+
+*"I SORRY. THE CHART WAS A MISTAKE. I MEANT TO ALIGN IT PROPERLY. BUT THE SOFTWARE CRASHED. I LOCKED THE DOOR TO PREVENT ACCIDENTAL MOVEMENT DURING THE POWER LOSS. PLEASE HELP US."*
+
+The signature was illegible, a scrawl of distress.
+
+Elias stared at the message. It was a confession of incompetence, not malice.
+
+Arise had panicked. When the power failed, the software crashed. He didn’t understand why the telescope was moving. He thought it was going to crash into the structure. He locked the door to stop the movement, assuming the manual lock would freeze the servos. He didn’t realize the servos were battery-powered and would continue to run until the battery died.
+
+He had trapped himself and Vane in a room that was slowly killing them by draining the power source.
+
+And the upside-down chart? That wasn’t sabotage.

@@ -1,0 +1,486 @@
+Below is a complete, self-contained TypeScript 5 service. Every file is real code (no placeholders). It uses only the Node.js standard library for the HTTP server and validation — no third‑party schema or test libraries.
+
+## `package.json`
+
+```json
+{
+  "name": "metrics-service",
+  "version": "1.0.0",
+  "description": "Newline-delimited request-metrics ingestion, validation, aggregation, and query service.",
+  "type": "commonjs",
+  "main": "dist/server.js",
+  "engines": {
+    "node": ">=18"
+  },
+  "scripts": {
+    "build": "tsc -p tsconfig.json",
+    "start": "node dist/server.js",
+    "dev": "ts-node src/server.ts",
+    "test": "jest --runInBand",
+    "lint": "tsc -p tsconfig.json --noEmit"
+  },
+  "dependencies": {},
+  "devDependencies": {
+    "@types/node": "^20.11.30",
+    "@types/jest": "^29.5.12",
+    "typescript": "^5.4.5",
+    "ts-jest": "^29.2.3",
+    "jest": "^29.7.0",
+    "ts-node": "^10.9.2"
+  }
+}
+```
+
+## `tsconfig.json`
+
+```json
+{
+  "compilerOptions": {
+    "target": "ES2022",
+    "module": "CommonJS",
+    "moduleResolution": "Node",
+    "lib": ["ES2022"],
+    "strict": true,
+    "noImplicitAny": true,
+    "strictNullChecks": true,
+    "strictFunctionTypes": true,
+    "noUncheckedIndexedAccess": true,
+    "noFallthroughCasesInSwitch": true,
+    "noUnusedLocals": true,
+    "noUnusedParameters": true,
+    "exactOptionalPropertyTypes": false,
+    "esModuleInterop": true,
+    "forceConsistentCasingInFileNames": true,
+    "skipLibCheck": true,
+    "resolveJsonModule": true,
+    "declaration": true,
+    "sourceMap": true,
+    "outDir": "dist",
+    "rootDir": "src",
+    "types": ["node", "jest"]
+  },
+  "include": ["src/**/*.ts"],
+  "exclude": ["node_modules", "dist", "**/*.test.ts"]
+}
+```
+
+## `src/types.ts`
+
+Strict domain types shared across the service.
+
+```typescript
+/** A single validated request-metrics record. */
+export interface RequestMetricRecord {
+  /** Globally unique identifier of the run this record belongs to. */
+  runId: string;
+  /** Model identifier (e.g. "gpt-4"). */
+  model: string;
+  /** Fixture / dataset identifier (e.g. "unit-tests"). */
+  fixture: string;
+  /** Wall-clock timestamp of the observation, ISO-8601. */
+  timestamp: string;
+  /** Latency in milliseconds. */
+  latencyMs: number;
+  /** HTTP status code observed. */
+  statusCode: number;
+  /** Tokens consumed by the request. */
+  tokens: number;
+}
+
+/** The raw JSON object as parsed from one line (before validation). */
+export type RawRecord = Record<string, unknown>;
+
+/** Validation failure with precise field + reason. */
+export interface ValidationError {
+  field: string;
+  message: string;
+}
+
+/** Result of validating one line. */
+export type ValidationResult =
+  | { ok: true; value: RequestMetricRecord }
+  | { ok: false; errors: ValidationError[] };
+
+/** Per-line processing outcome used by the incremental parser. */
+export type LineOutcome =
+  | { kind: 'accepted'; record: RequestMetricRecord }
+  | { kind: 'rejected'; line: number; errors: ValidationError[] }
+  | { kind: 'ignored' }; // blank / whitespace-only lines are ignored, not errors
+
+/** Aggregate statistics for a (model, fixture) group. */
+export interface GroupStats {
+  model: string;
+  fixture: string;
+  count: number;
+  mean: number;
+  median: number;
+  sampleStdDev: number;
+  min: number;
+  max: number;
+  p95: number;
+  totalTokens: number;
+  errorCount: number;
+  firstTimestamp: string;
+  lastTimestamp: string;
+}
+
+/** Full summary payload returned by GET /summary. */
+export interface SummaryResponse {
+  generatedAt: string;
+  totalRecords: number;
+  totalRuns: number;
+  groups: GroupStats[];
+}
+
+/** Payload returned by GET /runs/:id. */
+export interface RunDetailResponse {
+  runId: string;
+  model: string;
+  fixture: string;
+  recordCount: number;
+  stats: Omit<GroupStats, 'model' | 'fixture'>;
+  records: RequestMetricRecord[];
+}
+
+/** In-memory budget counters surfaced on /health. */
+export interface MemoryBudgetStatus {
+  bufferedBytes: number;
+  bufferedLimitBytes: number;
+  storedRecords: number;
+  storedRecordLimit: number;
+  rejectedLines: number;
+  acceptedLines: number;
+  droppedOverflowRecords: number;
+  atCapacity: boolean;
+}
+```
+
+## `src/validator.ts`
+
+Hand-written, dependency-free schema validation.
+
+```typescript
+import {
+  RawRecord,
+  RequestMetricRecord,
+  ValidationError,
+  ValidationResult,
+} from './types';
+
+// Field name -> human label, used to build precise error messages.
+const FIELD_LABELS: Readonly<Record<string, string>> = {
+  runId: 'runId',
+  model: 'model',
+  fixture: 'fixture',
+  timestamp: 'timestamp',
+  latencyMs: 'latencyMs',
+  statusCode: 'statusCode',
+  tokens: 'tokens',
+};
+
+const REQUIRED_FIELDS: readonly string[] = [
+  'runId',
+  'model',
+  'fixture',
+  'timestamp',
+  'latencyMs',
+  'statusCode',
+  'tokens',
+];
+
+// RFC 3339 / ISO-8601 date-time shape check (also requires parseability below).
+const ISO_DATE_RE = /^\d{4}-\d{2}-\d{2}[T ]\d{2}:\d{2}:\d{2}(\.\d+)?(Z|[+-]\d{2}:\d{2})?$/;
+
+function isFiniteNumber(v: unknown): v is number {
+  return typeof v === 'number' && Number.isFinite(v);
+}
+
+function isString(v: unknown): v is string {
+  return typeof v === 'string';
+}
+
+function isInteger(v: unknown): v is number {
+  return typeof v === 'number' && Number.isInteger(v);
+}
+
+/** Validate that a value is a well-formed ISO-8601 date-time string. */
+function isValidTimestamp(v: unknown): boolean {
+  if (!isString(v)) return false;
+  if (!ISO_DATE_RE.test(v)) return false;
+  const t = Date.parse(v);
+  return !Number.isNaN(t);
+}
+
+/**
+ * Validate a raw (untrusted) record against the metrics schema.
+ * Collects ALL field-level errors rather than failing fast, so a caller can
+ * report every problem in a single line at once.
+ */
+export function validateRecord(raw: RawRecord): ValidationResult {
+  const errors: ValidationError[] = [];
+
+  // Top-level must be an object (not array / null / primitive).
+  if (raw === null || typeof raw !== 'object' || Array.isArray(raw)) {
+    return {
+      ok: false,
+      errors: [{ field: '<root>', message: 'record must be a JSON object' }],
+    };
+  }
+
+  for (const field of REQUIRED_FIELDS) {
+    if (!(field in raw)) {
+      errors.push({ field, message: `${FIELD_LABELS[field] ?? field} is required` });
+    }
+  }
+
+  // runId: non-empty string
+  if ('runId' in raw) {
+    const v = raw.runId;
+    if (!isString(v)) {
+      errors.push({ field: 'runId', message: 'runId must be a string' });
+    } else if (v.trim().length === 0) {
+      errors.push({ field: 'runId', message: 'runId must be non-empty' });
+    }
+  }
+
+  // model: non-empty string
+  if ('model' in raw) {
+    const v = raw.model;
+    if (!isString(v)) {
+      errors.push({ field: 'model', message: 'model must be a string' });
+    } else if (v.trim().length === 0) {
+      errors.push({ field: 'model', message: 'model must be non-empty' });
+    }
+  }
+
+  // fixture: non-empty string
+  if ('fixture' in raw) {
+    const v = raw.fixture;
+    if (!isString(v)) {
+      errors.push({ field: 'fixture', message: 'fixture must be a string' });
+    } else if (v.trim().length === 0) {
+      errors.push({ field: 'fixture', message: 'fixture must be non-empty' });
+    }
+  }
+
+  // timestamp: valid ISO-8601
+  if ('timestamp' in raw) {
+    if (!isValidTimestamp(raw.timestamp)) {
+      errors.push({ field: 'timestamp', message: 'timestamp must be a valid ISO-8601 date-time' });
+    }
+  }
+
+  // latencyMs: finite number, >= 0
+  if ('latencyMs' in raw) {
+    const v = raw.latencyMs;
+    if (!isFiniteNumber(v)) {
+      errors.push({ field: 'latencyMs', message: 'latencyMs must be a finite number' });
+    } else if (v < 0) {
+      errors.push({ field: 'latencyMs', message: 'latencyMs must be >= 0' });
+    }
+  }
+
+  // statusCode: integer in [100, 599]
+  if ('statusCode' in raw) {
+    const v = raw.statusCode;
+    if (!isInteger(v)) {
+      errors.push({ field: 'statusCode', message: 'statusCode must be an integer' });
+    } else if (v < 100 || v > 599) {
+      errors.push({ field: 'statusCode', message: 'statusCode must be between 100 and 599' });
+    }
+  }
+
+  // tokens: non-negative integer
+  if ('tokens' in raw) {
+    const v = raw.tokens;
+    if (!isInteger(v)) {
+      errors.push({ field: 'tokens', message: 'tokens must be an integer' });
+    } else if (v < 0) {
+      errors.push({ field: 'tokens', message: 'tokens must be >= 0' });
+    }
+  }
+
+  if (errors.length > 0) {
+    return { ok: false, errors };
+  }
+
+  // All checks passed: narrow to the strict record type.
+  const rec = raw as RawRecord;
+  const value: RequestMetricRecord = {
+    runId: rec.runId as string,
+    model: rec.model as string,
+    fixture: rec.fixture as string,
+    timestamp: rec.timestamp as string,
+    latencyMs: rec.latencyMs as number,
+    statusCode: rec.statusCode as number,
+    tokens: rec.tokens as number,
+  };
+  return { ok: true, value };
+}
+```
+
+## `src/stats.ts`
+
+Numerical helpers: mean, median, sample standard deviation, percentiles.
+
+```typescript
+/** Arithmetic mean of a non-empty array. Returns NaN for empty input. */
+export function mean(xs: number[]): number {
+  if (xs.length === 0) return NaN;
+  let sum = 0;
+  for (let i = 0; i < xs.length; i++) sum += xs[i];
+  return sum / xs.length;
+}
+
+/** Median of a non-empty array. Does NOT mutate the input. Empty -> NaN. */
+export function median(xs: number[]): number {
+  if (xs.length === 0) return NaN;
+  const sorted = [...xs].sort((a, b) => a - b);
+  const mid = Math.floor(sorted.length / 2);
+  if (sorted.length % 2 === 0) {
+    return (sorted[mid - 1]! + sorted[mid]!) / 2;
+  }
+  return sorted[mid]!;
+}
+
+/**
+ * Sample standard deviation (n-1 denominator, Bessel's correction).
+ * Returns NaN when fewer than 2 samples are available.
+ */
+export function sampleStdDev(xs: number[]): number {
+  const n = xs.length;
+  if (n < 2) return NaN;
+  const m = mean(xs);
+  let ss = 0;
+  for (let i = 0; i < n; i++) {
+    const d = xs[i]! - m;
+    ss += d * d;
+  }
+  return Math.sqrt(ss / (n - 1));
+}
+
+/**
+ * Linear-interpolated percentile (0..1) of a non-empty array.
+ * Uses the "nearest-rank-with-interpolation" convention:
+ *   rank = (n - 1) * p ; floor/ceil indices blended by fractional part.
+ * Returns NaN for empty input or out-of-range p.
+ */
+export function percentile(xs: number[], p: number): number {
+  if (xs.length === 0) return NaN;
+  if (p < 0 || p > 1) return NaN;
+  const sorted = [...xs].sort((a, b) => a - b);
+  const n = sorted.length;
+  if (n === 1) return sorted[0]!;
+  const rank = (n - 1) * p;
+  const lo = Math.floor(rank);
+  const hi = Math.ceil(rank);
+  const frac = rank - lo;
+  const a = sorted[lo]!;
+  const b = sorted[hi]!;
+  return a + (b - a) * frac;
+}
+
+/** Round to a fixed number of decimal places (for stable JSON output). */
+export function roundTo(x: number, decimals: number): number {
+  if (!Number.isFinite(x)) return x;
+  const f = Math.pow(10, decimals);
+  return Math.round(x * f) / f;
+}
+```
+
+## `src/aggregator.ts`
+
+Groups records by `(model, fixture)` and computes the statistics.
+
+```typescript
+import { GroupStats, RequestMetricRecord } from './types';
+import { mean, median, percentile, sampleStdDev } from './stats';
+
+interface MutableGroup {
+  key: string;
+  model: string;
+  fixture: string;
+  latencies: number[];
+  totalTokens: number;
+  errorCount: number;
+  firstTs: string;
+  lastTs: string;
+  firstEpoch: number;
+  lastEpoch: number;
+}
+
+function groupKey(model: string, fixture: string): string {
+  return `${model}\u0000${fixture}`;
+}
+
+function epochOf(ts: string): number {
+  const t = Date.parse(ts);
+  return Number.isNaN(t) ? 0 : t;
+}
+
+/**
+ * Compute per-(model, fixture) aggregate statistics from a set of records.
+ * Pure function: safe to call repeatedly (used both live and in tests).
+ */
+export function computeGroupStats(records: readonly RequestMetricRecord[]): GroupStats[] {
+  const groups = new Map<string, MutableGroup>();
+
+  for (const r of records) {
+    const key = groupKey(r.model, r.fixture);
+    let g = groups.get(key);
+    if (!g) {
+      g = {
+        key,
+        model: r.model,
+        fixture: r.fixture,
+        latencies: [],
+        totalTokens: 0,
+        errorCount: 0,
+        firstTs: r.timestamp,
+        lastTs: r.timestamp,
+        firstEpoch: epochOf(r.timestamp),
+        lastEpoch: epochOf(r.timestamp),
+      };
+      groups.set(key, g);
+    }
+
+    g.latencies.push(r.latencyMs);
+    g.totalTokens += r.tokens;
+    if (r.statusCode >= 400) g.errorCount += 1;
+
+    const e = epochOf(r.timestamp);
+    if (e < g.firstEpoch) {
+      g.firstEpoch = e;
+      g.firstTs = r.timestamp;
+    }
+    if (e > g.lastEpoch) {
+      g.lastEpoch = e;
+      g.lastTs = r.timestamp;
+    }
+  }
+
+  const out: GroupStats[] = [];
+  for (const g of groups.values()) {
+    const lats = g.latencies;
+    out.push({
+      model: g.model,
+      fixture: g.fixture,
+      count: lats.length,
+      mean: mean(lats),
+      median: median(lats),
+      sampleStdDev: sampleStdDev(lats),
+      min: lats.length ? Math.min(...lats) : NaN,
+      max: lats.length ? Math.max(...lats) : NaN,
+      p95: percentile(lats, 0.95),
+      totalTokens: g.totalTokens,
+      errorCount: g.errorCount,
+      firstTimestamp: g.firstTs,
+      lastTimestamp: g.lastTs,
+    });
+  }
+
+  // Deterministic ordering for stable responses.
+  out.sort((a, b) =>
+    a.model === b.model
+      ? a.fixture.localeCompare(b.fixture)
+     

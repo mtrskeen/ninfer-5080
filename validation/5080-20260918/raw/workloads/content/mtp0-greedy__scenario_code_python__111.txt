@@ -1,0 +1,558 @@
+```python
+# pyproject.toml
+[build-system]
+requires = ["setuptools>=61.0", "wheel"]
+build-backend = "setuptools.build_meta"
+
+[project]
+name = "deterministic-job-runner"
+version = "0.1.0"
+description = "A deterministic asynchronous job runner with GPU enforcement, atomic state, JSONL events, and secret redaction."
+readme = "README.md"
+requires-python = ">=3.11"
+license = {text = "MIT"}
+authors = [
+    {name = "Your Name", email = "you@example.com"}
+]
+dependencies = [
+    "aiofiles>=23.0",
+]
+
+[project.optional-dependencies]
+dev = [
+    "pytest>=7.0",
+    "pytest-asyncio>=0.21",
+    "pytest-cov>=4.0",
+]
+
+[tool.setuptools.packages.find]
+where = ["."]
+include = ["job_runner*"]
+
+[tool.pytest.ini_options]
+asyncio_mode = "auto"
+testpaths = ["tests"]
+```
+
+```python
+# job_runner/__init__.py
+"""Deterministic asynchronous job runner package."""
+
+from .runner import JobRunner
+from .manifest import Manifest, JobSpec
+from .state import StateManager
+from .events import EventStream, EventType
+from .redaction import SecretRedactor
+
+__all__ = [
+    "JobRunner",
+    "Manifest",
+    "JobSpec",
+    "StateManager",
+    "EventStream",
+    "EventType",
+    "SecretRedactor",
+]
+```
+
+```python
+# job_runner/manifest.py
+"""Manifest parsing and validation for the job runner."""
+
+from __future__ import annotations
+
+import json
+from dataclasses import dataclass, field
+from pathlib import Path
+from typing import Any
+
+
+@dataclass
+class JobSpec:
+    """Specification for a single job."""
+    job_id: str
+    name: str
+    command: list[str]
+    gpu: bool = False
+    timeout_seconds: float = 300.0
+    env: dict[str, str] = field(default_factory=dict)
+    working_dir: str | None = None
+    depends_on: list[str] = field(default_factory=list)
+
+    def to_dict(self) -> dict[str, Any]:
+        return {
+            "job_id": self.job_id,
+            "name": self.name,
+            "command": self.command,
+            "gpu": self.gpu,
+            "timeout_seconds": self.timeout_seconds,
+            "env": self.env,
+            "working_dir": self.working_dir,
+            "depends_on": self.depends_on,
+        }
+
+    @classmethod
+    def from_dict(cls, data: dict[str, Any]) -> JobSpec:
+        return cls(
+            job_id=data["job_id"],
+            name=data.get("name", data["job_id"]),
+            command=data["command"],
+            gpu=data.get("gpu", False),
+            timeout_seconds=data.get("timeout_seconds", 300.0),
+            env=data.get("env", {}),
+            working_dir=data.get("working_dir"),
+            depends_on=data.get("depends_on", []),
+        )
+
+
+@dataclass
+class Manifest:
+    """Parsed manifest containing all job specifications."""
+    version: str
+    jobs: list[JobSpec]
+    secrets: dict[str, str] = field(default_factory=dict)
+    gpu_concurrency: int = 1
+
+    @classmethod
+    def from_file(cls, path: Path) -> Manifest:
+        """Load and parse a manifest from a JSON file."""
+        with open(path, "r", encoding="utf-8") as f:
+            data = json.load(f)
+        return cls.from_dict(data)
+
+    @classmethod
+    def from_dict(cls, data: dict[str, Any]) -> Manifest:
+        """Create a Manifest from a dictionary."""
+        jobs = [JobSpec.from_dict(j) for j in data.get("jobs", [])]
+        return cls(
+            version=data.get("version", "1.0"),
+            jobs=jobs,
+            secrets=data.get("secrets", {}),
+            gpu_concurrency=data.get("gpu_concurrency", 1),
+        )
+
+    def get_job(self, job_id: str) -> JobSpec | None:
+        """Get a job by its ID."""
+        for job in self.jobs:
+            if job.job_id == job_id:
+                return job
+        return None
+
+    def validate(self) -> list[str]:
+        """Validate the manifest and return a list of error messages."""
+        errors: list[str] = []
+
+        # Check for duplicate job IDs
+        seen_ids: set[str] = set()
+        for job in self.jobs:
+            if job.job_id in seen_ids:
+                errors.append(f"Duplicate job_id: {job.job_id}")
+            seen_ids.add(job.job_id)
+
+        # Check that dependencies reference existing jobs
+        all_ids = {job.job_id for job in self.jobs}
+        for job in self.jobs:
+            for dep in job.depends_on:
+                if dep not in all_ids:
+                    errors.append(f"Job '{job.job_id}' depends on unknown job '{dep}'")
+
+        # Check for cycles in dependencies
+        if self._has_cycle():
+            errors.append("Dependency cycle detected in job graph")
+
+        # Enforce GPU concurrency constraint
+        gpu_jobs = [j for j in self.jobs if j.gpu]
+        if len(gpu_jobs) > 0 and self.gpu_concurrency < 1:
+            errors.append("gpu_concurrency must be at least 1")
+
+        return errors
+
+    def _has_cycle(self) -> bool:
+        """Detect cycles in the dependency graph using DFS."""
+        graph: dict[str, list[str]] = {job.job_id: job.depends_on for job in self.jobs}
+        visited: set[str] = set()
+        in_stack: set[str] = set()
+
+        def dfs(node: str) -> bool:
+            visited.add(node)
+            in_stack.add(node)
+            for neighbor in graph.get(node, []):
+                if neighbor not in visited:
+                    if dfs(neighbor):
+                        return True
+                elif neighbor in in_stack:
+                    return True
+            in_stack.discard(node)
+            return False
+
+        for node in graph:
+            if node not in visited:
+                if dfs(node):
+                    return True
+        return False
+
+    def topological_order(self) -> list[JobSpec]:
+        """Return jobs in topological order (dependencies first)."""
+        graph: dict[str, list[str]] = {job.job_id: job.depends_on for job in self.jobs}
+        in_degree: dict[str, int] = {job_id: 0 for job_id in graph}
+        dependents: dict[str, list[str]] = {job_id: [] for job_id in graph}
+
+        for job_id, deps in graph.items():
+            for dep in deps:
+                in_degree[job_id] += 1
+                dependents[dep].append(job_id)
+
+        queue = [job_id for job_id, deg in in_degree.items() if deg == 0]
+        ordered_ids: list[str] = []
+
+        while queue:
+            node = queue.pop(0)
+            ordered_ids.append(node)
+            for dependent in dependents[node]:
+                in_degree[dependent] -= 1
+                if in_degree[dependent] == 0:
+                    queue.append(dependent)
+
+        if len(ordered_ids) != len(graph):
+            raise ValueError("Cannot topologically sort: cycle detected")
+
+        job_map = {job.job_id: job for job in self.jobs}
+        return [job_map[jid] for jid in ordered_ids]
+```
+
+```python
+# job_runner/state.py
+"""Atomic state persistence for the job runner."""
+
+from __future__ import annotations
+
+import json
+import os
+import tempfile
+from dataclasses import dataclass, field
+from enum import Enum
+from pathlib import Path
+from typing import Any
+
+
+class JobStatus(str, Enum):
+    PENDING = "pending"
+    RUNNING = "running"
+    COMPLETED = "completed"
+    FAILED = "failed"
+    CANCELLED = "cancelled"
+
+
+@dataclass
+class JobState:
+    """State for a single job."""
+    job_id: str
+    status: JobStatus = JobStatus.PENDING
+    exit_code: int | None = None
+    started_at: str | None = None
+    finished_at: str | None = None
+    error: str | None = None
+
+    def to_dict(self) -> dict[str, Any]:
+        return {
+            "job_id": self.job_id,
+            "status": self.status.value,
+            "exit_code": self.exit_code,
+            "started_at": self.started_at,
+            "finished_at": self.finished_at,
+            "error": self.error,
+        }
+
+    @classmethod
+    def from_dict(cls, data: dict[str, Any]) -> JobState:
+        return cls(
+            job_id=data["job_id"],
+            status=JobStatus(data.get("status", "pending")),
+            exit_code=data.get("exit_code"),
+            started_at=data.get("started_at"),
+            finished_at=data.get("finished_at"),
+            error=data.get("error"),
+        )
+
+
+@dataclass
+class RunnerState:
+    """Overall runner state."""
+    jobs: dict[str, JobState] = field(default_factory=dict)
+    active_gpu_job: str | None = None
+    cancelled: bool = False
+
+    def to_dict(self) -> dict[str, Any]:
+        return {
+            "jobs": {jid: js.to_dict() for jid, js in self.jobs.items()},
+            "active_gpu_job": self.active_gpu_job,
+            "cancelled": self.cancelled,
+        }
+
+    @classmethod
+    def from_dict(cls, data: dict[str, Any]) -> RunnerState:
+        jobs = {
+            jid: JobState.from_dict(js)
+            for jid, js in data.get("jobs", {}).items()
+        }
+        return cls(
+            jobs=jobs,
+            active_gpu_job=data.get("active_gpu_job"),
+            cancelled=data.get("cancelled", False),
+        )
+
+
+class StateManager:
+    """Manages atomic persistence of runner state."""
+
+    def __init__(self, state_dir: Path):
+        self.state_dir = state_dir
+        self.state_file = state_dir / "state.json"
+        self.state_dir.mkdir(parents=True, exist_ok=True)
+
+    def load(self) -> RunnerState:
+        """Load state from disk, returning empty state if file doesn't exist."""
+        if not self.state_file.exists():
+            return RunnerState()
+        with open(self.state_file, "r", encoding="utf-8") as f:
+            data = json.load(f)
+        return RunnerState.from_dict(data)
+
+    def save(self, state: RunnerState) -> None:
+        """Atomically save state to disk using write-to-temp-then-rename."""
+        data = state.to_dict()
+        json_str = json.dumps(data, indent=2, sort_keys=True)
+
+        # Write to a temporary file in the same directory, then atomically rename
+        fd, tmp_path = tempfile.mkstemp(
+            dir=self.state_dir, prefix=".state_", suffix=".tmp"
+        )
+        try:
+            with os.fdopen(fd, "w", encoding="utf-8") as f:
+                f.write(json_str)
+                f.flush()
+                os.fsync(f.fileno())
+            # Atomic rename
+            os.replace(tmp_path, self.state_file)
+        except Exception:
+            # Clean up temp file on failure
+            if os.path.exists(tmp_path):
+                os.unlink(tmp_path)
+            raise
+
+    def clear(self) -> None:
+        """Remove the state file."""
+        if self.state_file.exists():
+            self.state_file.unlink()
+```
+
+```python
+# job_runner/events.py
+"""Structured JSONL event streaming."""
+
+from __future__ import annotations
+
+import asyncio
+import json
+import sys
+import time
+from dataclasses import dataclass, field
+from enum import Enum
+from pathlib import Path
+from typing import Any, AsyncIterator
+
+
+class EventType(str, Enum):
+    RUNNER_START = "runner_start"
+    RUNNER_STOP = "runner_stop"
+    JOB_START = "job_start"
+    JOB_COMPLETE = "job_complete"
+    JOB_FAIL = "job_fail"
+    JOB_CANCEL = "job_cancel"
+    GPU_ACQUIRE = "gpu_acquire"
+    GPU_RELEASE = "gpu_release"
+    STATE_SAVE = "state_save"
+    ERROR = "error"
+    INFO = "info"
+
+
+@dataclass
+class Event:
+    """A structured event."""
+    event_type: EventType
+    timestamp: float
+    data: dict[str, Any] = field(default_factory=dict)
+
+    def to_jsonl(self) -> str:
+        """Serialize to a single JSONL line."""
+        obj = {
+            "type": self.event_type.value,
+            "timestamp": self.timestamp,
+            **self.data,
+        }
+        return json.dumps(obj, sort_keys=True, default=str)
+
+
+class EventStream:
+    """Streams structured JSONL events to a file or stdout."""
+
+    def __init__(
+        self,
+        output_path: Path | None = None,
+        to_stdout: bool = True,
+        redactor: "SecretRedactor | None" = None,
+    ):
+        self.output_path = output_path
+        self.to_stdout = to_stdout
+        self.redactor = redactor
+        self._file_handle: Any = None
+        self._lock = asyncio.Lock()
+
+    async def start(self) -> None:
+        """Open the output file if configured."""
+        if self.output_path:
+            self.output_path.parent.mkdir(parents=True, exist_ok=True)
+            self._file_handle = open(self.output_path, "a", encoding="utf-8")
+
+    async def stop(self) -> None:
+        """Close the output file."""
+        if self._file_handle:
+            self._file_handle.close()
+            self._file_handle = None
+
+    async def emit(self, event: Event) -> None:
+        """Emit a single event to all configured sinks."""
+        line = event.to_jsonl()
+
+        # Apply redaction if a redactor is configured
+        if self.redactor:
+            line = self.redactor.redact(line)
+
+        async with self._lock:
+            if self._file_handle:
+                self._file_handle.write(line + "\n")
+                self._file_handle.flush()
+            if self.to_stdout:
+                print(line, file=sys.stdout, flush=True)
+
+    def make_event(
+        self,
+        event_type: EventType,
+        **data: Any,
+    ) -> Event:
+        """Create a new Event with the current timestamp."""
+        return Event(
+            event_type=event_type,
+            timestamp=time.time(),
+            data=data,
+        )
+
+    async def emit_event(
+        self,
+        event_type: EventType,
+        **data: Any,
+    ) -> None:
+        """Create and emit an event in one call."""
+        event = self.make_event(event_type, **data)
+        await self.emit(event)
+```
+
+```python
+# job_runner/redaction.py
+"""Secret redaction for event streams."""
+
+from __future__ import annotations
+
+import re
+from typing import Any
+
+
+class SecretRedactor:
+    """Redacts configured secret values from strings."""
+
+    def __init__(self, secrets: dict[str, str] | None = None):
+        self._secrets: dict[str, str] = secrets or {}
+        # Pre-compile regex patterns for each secret value
+        self._patterns: list[tuple[str, re.Pattern[str]]] = []
+        for key, value in self._secrets.items():
+            if value:  # Only redact non-empty secrets
+                escaped = re.escape(value)
+                pattern = re.compile(escaped)
+                self._patterns.append((key, pattern))
+
+    def redact(self, text: str) -> str:
+        """Replace all occurrences of secret values with a redaction marker."""
+        result = text
+        for key, pattern in self._patterns:
+            result = pattern.sub(f"[REDACTED:{key}]", result)
+        return result
+
+    def redact_dict(self, data: dict[str, Any]) -> dict[str, Any]:
+        """Recursively redact secrets from a dictionary structure."""
+        redacted: dict[str, Any] = {}
+        for key, value in data.items():
+            if isinstance(value, str):
+                redacted[key] = self.redact(value)
+            elif isinstance(value, dict):
+                redacted[key] = self.redact_dict(value)
+            elif isinstance(value, list):
+                redacted[key] = [
+                    self.redact(item) if isinstance(item, str) else item
+                    for item in value
+                ]
+            else:
+                redacted[key] = value
+        return redacted
+```
+
+```python
+# job_runner/runner.py
+"""Main job runner with GPU enforcement, resume, and signal handling."""
+
+from __future__ import annotations
+
+import asyncio
+import signal
+import sys
+import time
+from pathlib import Path
+from typing import Any
+
+from .events import EventStream, EventType
+from .manifest import Manifest, JobSpec
+from .redaction import SecretRedactor
+from .state import JobState, JobStatus, RunnerState, StateManager
+
+
+class JobRunner:
+    """Deterministic asynchronous job runner."""
+
+    def __init__(
+        self,
+        manifest_path: Path,
+        state_dir: Path,
+        events_path: Path | None = None,
+        to_stdout: bool = True,
+        dry_run: bool = False,
+    ):
+        self.manifest_path = manifest_path
+        self.state_dir = state_dir
+        self.events_path = events_path
+        self.to_stdout = to_stdout
+        self.dry_run = dry_run
+
+        # Load manifest
+        self.manifest = Manifest.from_file(manifest_path)
+
+        # Initialize redactor with secrets from manifest
+        self.redactor = SecretRedactor(self.manifest.secrets)
+
+        # Initialize event stream
+        self.events = EventStream(
+            output_path=events_path,
+            to_stdout=to_stdout,
+            redactor=self.redactor,
+        )
+
+        # Initialize state manager
+        self.state_manager =

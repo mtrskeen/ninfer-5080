@@ -1,0 +1,374 @@
+# CUDA 13.1 / C++20 — Row-wise BF16 Normalization on sm_120a
+
+## `CMakeLists.txt`
+
+```cmake
+cmake_minimum_required(VERSION 3.24)
+project(bf16_row_normalize LANGUAGES CXX)
+
+set(CMAKE_CXX_STANDARD 20)
+set(CMAKE_CXX_STANDARD_REQUIRED ON)
+set(CMAKE_CXX_EXTENSIONS OFF)
+
+# ── Locate the CUDA toolkit (expects CUDA 13.1 in $ENV{CUDA_HOME} or default path) ──
+if(NOT DEFINED CUDAToolkit_ROOT AND DEFINED ENV{CUDA_HOME})
+    set(CUDAToolkit_ROOT "$ENV{CUDA_HOME}")
+endif()
+find_package(CUDAToolkit REQUIRED)
+
+add_executable(bf16_row_normalize src/main.cpp)
+
+target_link_libraries(bf16_row_normalize PRIVATE
+    CUDA::cudart
+    CUDA::nvrtc   # available in CUDA 13.x; harmless if unused at runtime
+)
+
+# ── Compile flags for sm_120a (Blackwell datacenter, CUDA 13.1) ──
+target_compile_options(bf16_row_normalize PRIVATE
+    -gencode arch=compute_120a,code=sm_120a
+)
+
+# Runtime linker needs to find libcudart.so / libcudart_static.a
+target_link_directories(bf16_row_normalize PRIVATE
+    ${CUDAToolkit_ROOT}/lib64
+    ${CUDAToolkit_ROOT}/lib64/stubs
+)
+
+# ── Deterministic build: suppress non-deterministic warnings, keep -Wall ──
+target_compile_options(bf16_row_normalize PRIVATE
+    -Wall
+    -Wextra
+    -Wno-unused-parameter
+)
+
+# Install rule (optional convenience)
+install(TARGETS bf16_row_normalize RUNTIME DESTINATION bin)
+```
+
+## `src/main.cpp`
+
+```cpp
+// ============================================================================
+//  main.cpp — Row-wise BF16 normalization on an sm_120a GPU
+//
+//  For every row of a large BF16 matrix we compute:
+//      out[i][j] = in[i][j] / sqrt( sum_k in[i][k]^2 )
+//  i.e. each row is scaled to unit L2-norm.
+//
+//  The kernel operates entirely in __nv_bfloat16 arithmetic (native on
+//  sm_120a).  A separate FP32 reference pass is used for verification.
+//
+//  Build:  cmake -B build && cmake --build build
+//  Run:    ./build/bf16_row_normalize --rows 8192 --cols 4096
+// ============================================================================
+
+#include <cuda_runtime.h>
+#include <cuda_bf16.h>          // __nv_bfloat16, __nv_bfloat162 intrinsics
+
+#include <algorithm>
+#include <array>
+#include <chrono>
+#include <cmath>
+#include <cstdint>
+#include <cstdlib>
+#include <cstring>
+#include <filesystem>
+#include <fstream>
+#include <iomanip>
+#include <iostream>
+#include <limits>
+#include <random>
+#include <span>
+#include <string>
+#include <system_error>
+#include <vector>
+
+// ---------------------------------------------------------------------------
+//  Constants
+// ---------------------------------------------------------------------------
+static constexpr int   kDefaultRows = 8192;
+static constexpr int   kDefaultCols = 4096;
+static constexpr int   kVecWidth    = 8;        // elements per 16-byte vector load
+static constexpr float kTolerance   = 5e-3f;   // relative error tolerance vs FP32 ref
+static constexpr int   kWarmupIters = 3;
+static constexpr int   kTimedIters  = 10;
+
+// ---------------------------------------------------------------------------
+//  RAII device buffer
+// ---------------------------------------------------------------------------
+class DeviceBuffer {
+public:
+    DeviceBuffer() = default;
+
+    explicit DeviceBuffer(std::size_t bytes) : m_bytes(bytes) {
+        if (bytes == 0) return;
+        auto err = cudaMalloc(&m_ptr, bytes);
+        if (err != cudaSuccess)
+            throw std::runtime_error(
+                std::string("cudaMalloc failed: ") + cudaGetErrorString(err));
+    }
+
+    DeviceBuffer(const DeviceBuffer&)            = delete;
+    DeviceBuffer& operator=(const DeviceBuffer&) = delete;
+
+    DeviceBuffer(DeviceBuffer&& o) noexcept
+        : m_ptr(o.m_ptr), m_bytes(o.m_bytes) {
+        o.m_ptr   = nullptr;
+        o.m_bytes = 0;
+    }
+
+    DeviceBuffer& operator=(DeviceBuffer&& o) noexcept {
+        if (this != &o) {
+            reset();
+            m_ptr   = o.m_ptr;
+            m_bytes = o.m_bytes;
+            o.m_ptr   = nullptr;
+            o.m_bytes = 0;
+        }
+        return *this;
+    }
+
+    ~DeviceBuffer() { reset(); }
+
+    void*       data()         const { return m_ptr; }
+    const void* data() const   { return m_ptr; }
+    std::size_t size()         const { return m_bytes; }
+    bool        valid()        const { return m_ptr != nullptr; }
+
+    void reset() {
+        if (m_ptr) {
+            cudaFree(m_ptr);
+            m_ptr = nullptr;
+        }
+        m_bytes = 0;
+    }
+
+private:
+    void*       m_ptr   = nullptr;
+    std::size_t m_bytes = 0;
+};
+
+// ---------------------------------------------------------------------------
+//  Error-checking helper
+// ---------------------------------------------------------------------------
+#define CUDA_CHECK(call)                                                       \
+    do {                                                                        \
+        cudaError_t _e = (call);                                               \
+        if (_e != cudaSuccess) {                                              \
+            std::cerr << "CUDA error at " << __FILE__ << ":" << __LINE__       \
+                      << " (" #call "): " << cudaGetErrorString(_e)           \
+                      << "\n";                                                 \
+            std::exit(EXIT_FAILURE);                                          \
+        }                                                                      \
+    } while (0)
+
+// ---------------------------------------------------------------------------
+//  Argument parsing
+// ---------------------------------------------------------------------------
+struct Options {
+    int rows = kDefaultRows;
+    int cols = kDefaultCols;
+    unsigned seed = 0xDEADBEEF;
+    bool help = false;
+};
+
+static void printUsage(const char* prog) {
+    std::cout <<
+        "Usage: " << prog << " [options]\n"
+        "\n"
+        "Options:\n"
+        "  --rows N        Number of rows   (default: " << kDefaultRows << ")\n"
+        "  --cols N        Number of columns (default: " << kDefaultCols << ")\n"
+        "  --seed N        RNG seed          (default: 0x"
+                          << std::hex << 0xDEADBEEF << std::dec << ")\n"
+        "  --help          Show this message\n";
+}
+
+static Options parseArgs(int argc, char** argv) {
+    Options opt;
+    for (int i = 1; i < argc; ++i) {
+        std::string arg = argv[i];
+        if (arg == "--help" || arg == "-h") {
+            opt.help = true;
+        } else if (arg == "--rows") {
+            if (i + 1 >= argc) { std::cerr << "Missing value for --rows\n"; exit(1); }
+            opt.rows = std::stoi(argv[++i]);
+        } else if (arg == "--cols") {
+            if (i + 1 >= argc) { std::cerr << "Missing value for --cols\n"; exit(1); }
+            opt.cols = std::stoi(argv[++i]);
+        } else if (arg == "--seed") {
+            if (i + 1 >= argc) { std::cerr << "Missing value for --seed\n"; exit(1); }
+            opt.seed = static_cast<unsigned>(std::stoul(argv[++i]));
+        } else {
+            std::cerr << "Unknown option: " << arg << "\n";
+            printUsage(argv[0]);
+            exit(1);
+        }
+    }
+    if (opt.rows <= 0 || opt.cols <= 0) {
+        std::cerr << "rows and cols must be positive\n";
+        exit(1);
+    }
+    return opt;
+}
+
+// ---------------------------------------------------------------------------
+//  Deterministic input generation (host-side, then H2D copy)
+// ---------------------------------------------------------------------------
+// Generate a matrix of random values in [-1, 1] stored as BF16.
+// We use a fixed-seed mt19937 so results are reproducible across runs.
+static std::vector<__nv_bfloat16> generateInputBF16(int rows, int cols, unsigned seed) {
+    std::mt19937 rng(seed);
+    std::uniform_real_distribution<float> dist(-1.0f, 1.0f);
+
+    const std::size_t total = static_cast<std::size_t>(rows) * cols;
+    std::vector<__nv_bfloat16> host(static_cast<std::size_t>(total));
+
+    for (std::size_t i = 0; i < total; ++i) {
+        float f = dist(rng);
+        host[i] = __float_to_bfloat16(f);
+    }
+    return host;
+}
+
+// Also produce the FP32 version of the same logical values for the reference.
+static std::vector<float> generateInputFP32(int rows, int cols, unsigned seed) {
+    std::mt19937 rng(seed);
+    std::uniform_real_distribution<float> dist(-1.0f, 1.0f);
+
+    const std::size_t total = static_cast<std::size_t>(rows) * cols;
+    std::vector<float> host(total);
+
+    for (std::size_t i = 0; i < total; ++i) {
+        host[i] = dist(rng);
+    }
+    return host;
+}
+
+// ---------------------------------------------------------------------------
+//  Vectorized CUDA kernel — one block per row
+//
+//  Memory layout:
+//    The matrix is stored in row-major order in global memory.
+//    Each element is 2 bytes (BF16).  A "vector" of kVecWidth=8 BF16
+//    elements occupies 16 bytes and can be loaded/stored with a single
+//    128-bit (uint4 / __nv_bfloat162 x4) instruction.
+//
+//  Launch geometry:
+//    gridDim.x  = num_rows
+//    blockDim.x = min( ceil(cols / kVecWidth), 256 )
+//
+//  Each thread loads a uint4 (8 BF16s), converts to FP32, accumulates
+//  into a shared-memory partial sum, then after a __syncthreads() every
+//  thread divides its 8 values by the row norm and writes back as BF16.
+//
+//  Numerical stability:
+//    The inner product uses pairwise accumulation in FP32 (via shared
+//    memory reduction within the block) before taking the square root.
+//    This avoids catastrophic cancellation that a naive sequential
+//    accumulation would suffer from on long rows.
+// ---------------------------------------------------------------------------
+__global__ void rowNormalizeBF16Kernel(
+    const __nv_bfloat16* __restrict__ input,
+    __nv_bfloat16*       __restrict__ output,
+    int rows,
+    int cols,
+    int vecsPerRow)
+{
+    const int rowIdx = blockIdx.x;
+    if (rowIdx >= rows) return;
+
+    const int tid  = threadIdx.x;
+    const int ntid = blockDim.x;
+
+    // Base pointer for this row
+    const __nv_bfloat16* rowIn  = input  + static_cast<std::ptrdiff_t>(rowIdx) * cols;
+    __nv_bfloat16*       rowOut = output + static_cast<std::ptrdiff_t>(rowIdx) * cols;
+
+    // Shared memory for partial sums (one float per thread)
+    extern __shared__ float s_partial[];
+
+    // Each thread processes one vector (8 BF16 = 16 bytes)
+    // If cols is not a multiple of kVecWidth, the last vector may be partial.
+    const int myVec = tid;  // one vector per thread for simplicity
+
+    float localSum = 0.0f;
+
+    if (myVec < vecsPerRow) {
+        // Load 8 BF16 values as a uint4 (16 bytes)
+        const uint4 raw = reinterpret_cast<const uint4*>(rowIn)[myVec];
+
+        // Unpack 8 __nv_bfloat16 from the 4 __nv_bfloat162 halves
+        const __nv_bfloat162 h0 = *reinterpret_cast<const __nv_bfloat162*>(&raw.x);
+        const __nv_bfloat162 h1 = *reinterpret_cast<const __nv_bfloat162*>(&raw.y);
+        const __nv_bfloat162 h2 = *reinterpret_cast<const __nv_bfloat162*>(&raw.z);
+        const __nv_bfloat162 h3 = *reinterpret_cast<const __nv_bfloat162*>(&raw.w);
+
+        // Convert to FP32
+        float f0x = __bfloat162float(h0.x);
+        float f0y = __bfloat162float(h0.y);
+        float f1x = __bfloat162float(h1.x);
+        float f1y = __bfloat162float(h1.y);
+        float f2x = __bfloat162float(h2.x);
+        float f2y = __bfloat162float(h2.y);
+        float f3x = __bfloat162float(h3.x);
+        float f3y = __bfloat162float(h3.y);
+
+        // Accumulate squares locally
+        localSum = f0x*f0x + f0y*f0y + f1x*f1x + f1y*f1y
+                 + f2x*f2x + f2y*f2y + f3x*f3x + f3y*f3y;
+
+        // Handle tail: if this is the last vector and cols % kVecWidth != 0,
+        // zero out the extra lanes so they don't contribute to the norm.
+        const int offset = myVec * kVecWidth;
+        const int valid  = std::min(kVecWidth, cols - offset);
+        if (valid < kVecWidth) {
+            // Re-zero the invalid high lanes
+            switch (valid) {
+                case 1: localSum = f0x*f0x; break;
+                case 2: localSum = f0x*f0x + f0y*f0y; break;
+                case 3: localSum = f0x*f0x + f0y*f0y + f1x*f1x; break;
+                case 4: localSum = f0x*f0x + f0y*f0y + f1x*f1x + f1y*f1y; break;
+                case 5: localSum = f0x*f0x + f0y*f0y + f1x*f1x + f1y*f1y + f2x*f2x; break;
+                case 6: localSum = f0x*f0x + f0y*f0y + f1x*f1x + f1y*f1y + f2x*f2x + f2y*f2y; break;
+                case 7: localSum = f0x*f0x + f0y*f0y + f1x*f1x + f1y*f1y + f2x*f2x + f2y*f2y + f3x*f3x; break;
+                default: break; // valid == 8, no masking needed
+            }
+        }
+    }
+
+    s_partial[tid] = localSum;
+    __syncthreads();
+
+    // Intra-block tree reduction
+    for (int stride = ntid / 2; stride > 0; stride >>= 1) {
+        if (tid < stride) {
+            s_partial[tid] += s_partial[tid + stride];
+        }
+        __syncthreads();
+    }
+
+    // All threads read the final sum from s_partial[0]
+    const float rowNormSq = s_partial[0];
+    const float invNorm   = (rowNormSq > 0.0f) ? rsqrtf(rowNormSq) : 0.0f;
+
+    // Write normalized values back
+    if (myVec < vecsPerRow) {
+        const uint4 raw = reinterpret_cast<const uint4*>(rowIn)[myVec];
+
+        const __nv_bfloat162 h0 = *reinterpret_cast<const __nv_bfloat162*>(&raw.x);
+        const __nv_bfloat162 h1 = *reinterpret_cast<const __nv_bfloat162*>(&raw.y);
+        const __nv_bfloat162 h2 = *reinterpret_cast<const __nv_bfloat162*>(&raw.z);
+        const __nv_bfloat162 h3 = *reinterpret_cast<const __nv_bfloat162*>(&raw.w);
+
+        float f0x = __bfloat162float(h0.x);
+        float f0y = __bfloat162float(h0.y);
+        float f1x = __bfloat162float(h1.x);
+        float f1y = __bfloat162float(h1.y);
+        float f2x = __bfloat162float(h2.x);
+        float f2y = __bfloat162float(h2.y);
+        float f3x = __bfloat162float(h3.x);
+        float f3y = __bfloat162float(h3.y);
+
+        // Scale
+        f0x *= invNorm; f0y *=

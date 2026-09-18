@@ -1,0 +1,208 @@
+CREATE TABLE IF NOT EXISTS models (
+    model_id SERIAL PRIMARY KEY,
+    model_name VARCHAR(100) NOT NULL UNIQUE,
+    architecture VARCHAR(50) NOT NULL,
+    parameter_count BIGINT NOT NULL CHECK (parameter_count > 0),
+    context_length INT NOT NULL CHECK (context_length > 0),
+    created_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP
+);
+
+CREATE TABLE IF NOT EXISTS fixtures (
+    fixture_id SERIAL PRIMARY KEY,
+    fixture_name VARCHAR(100) NOT NULL UNIQUE,
+    fixture_kind VARCHAR(50) NOT NULL CHECK (fixture_kind IN ('short_context', 'long_context', 'code_generation', 'multi_turn')),
+    token_count INT NOT NULL CHECK (token_count > 0),
+    description TEXT,
+    created_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP
+);
+
+CREATE TABLE IF NOT EXISTS runs (
+    run_id SERIAL PRIMARY KEY,
+    model_id INT NOT NULL REFERENCES models(model_id) ON DELETE CASCADE,
+    fixture_id INT NOT NULL REFERENCES fixtures(fixture_id) ON DELETE CASCADE,
+    run_timestamp TIMESTAMP NOT NULL DEFAULT CURRENT_TIMESTAMP,
+    batch_size INT NOT NULL CHECK (batch_size > 0),
+    sequence_length INT NOT NULL CHECK (sequence_length > 0),
+    status VARCHAR(20) NOT NULL DEFAULT 'completed' CHECK (status IN ('completed', 'failed', 'timeout')),
+    UNIQUE (model_id, fixture_id, run_timestamp)
+);
+
+CREATE TABLE IF NOT EXISTS request_metrics (
+    metric_id SERIAL PRIMARY KEY,
+    run_id INT NOT NULL REFERENCES runs(run_id) ON DELETE CASCADE,
+    request_index INT NOT NULL CHECK (request_index >= 0),
+    input_tokens INT NOT NULL CHECK (input_tokens >= 0),
+    output_tokens INT NOT NULL CHECK (output_tokens >= 0),
+    latency_ms FLOAT NOT NULL CHECK (latency_ms >= 0),
+    mtp_acceptance_rate FLOAT NOT NULL CHECK (mtp_acceptance_rate BETWEEN 0.0 AND 1.0),
+    retention_score FLOAT NOT NULL CHECK (retention_score BETWEEN 0.0 AND 1.0),
+    created_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP,
+    UNIQUE (run_id, request_index)
+);
+
+CREATE INDEX idx_runs_model_id ON runs(model_id);
+CREATE INDEX idx_runs_fixture_id ON runs(fixture_id);
+CREATE INDEX idx_runs_timestamp ON runs(run_timestamp);
+CREATE INDEX idx_metrics_run_id ON request_metrics(run_id);
+CREATE INDEX idx_metrics_latency ON request_metrics(latency_ms);
+CREATE INDEX idx_metrics_mtp ON request_metrics(mtp_acceptance_rate);
+CREATE INDEX idx_metrics_retention ON request_metrics(retention_score);
+
+CREATE OR REPLACE VIEW v_run_summary AS
+SELECT 
+    r.run_id,
+    m.model_name,
+    f.fixture_name,
+    f.fixture_kind,
+    r.batch_size,
+    r.sequence_length,
+    r.status,
+    COUNT(DISTINCT rm.metric_id) AS total_requests,
+    AVG(rm.latency_ms) AS avg_latency_ms,
+    AVG(rm.mtp_acceptance_rate) AS avg_mtp_acceptance,
+    AVG(rm.retention_score) AS avg_retention_score,
+    SUM(rm.output_tokens) AS total_output_tokens
+FROM runs r
+JOIN models m ON r.model_id = m.model_id
+JOIN fixtures f ON r.fixture_id = f.fixture_id
+LEFT JOIN request_metrics rm ON r.run_id = rm.run_id
+GROUP BY r.run_id, m.model_name, f.fixture_name, f.fixture_kind, r.batch_size, r.sequence_length, r.status;
+
+CREATE OR REPLACE VIEW v_model_performance AS
+SELECT 
+    m.model_id,
+    m.model_name,
+    m.parameter_count,
+    m.context_length,
+    f.fixture_kind,
+    COUNT(DISTINCT r.run_id) AS total_runs,
+    AVG(rm.latency_ms) AS avg_latency_ms,
+    STDDEV(rm.latency_ms) AS latency_stddev,
+    AVG(rm.mtp_acceptance_rate) AS avg_mtp_acceptance,
+    AVG(rm.retention_score) AS avg_retention_score,
+    SUM(rm.output_tokens) / NULLIF(COUNT(DISTINCT r.run_id), 0) AS avg_tokens_per_run
+FROM models m
+JOIN runs r ON m.model_id = r.model_id
+JOIN fixtures f ON r.fixture_id = f.fixture_id
+JOIN request_metrics rm ON r.run_id = rm.run_id
+GROUP BY m.model_id, m.model_name, m.parameter_count, m.context_length, f.fixture_kind;
+
+CREATE OR REPLACE FUNCTION upsert_request_metrics(
+    p_run_id INT,
+    p_request_index INT,
+    p_input_tokens INT,
+    p_output_tokens INT,
+    p_latency_ms FLOAT,
+    p_mtp_acceptance_rate FLOAT,
+    p_retention_score FLOAT
+) RETURNS VOID AS $$
+BEGIN
+    INSERT INTO request_metrics (
+        run_id,
+        request_index,
+        input_tokens,
+        output_tokens,
+        latency_ms,
+        mtp_acceptance_rate,
+        retention_score
+    ) VALUES (
+        p_run_id,
+        p_request_index,
+        p_input_tokens,
+        p_output_tokens,
+        p_latency_ms,
+        p_mtp_acceptance_rate,
+        p_retention_score
+    )
+    ON CONFLICT (run_id, request_index) DO UPDATE SET
+        input_tokens = EXCLUDED.input_tokens,
+        output_tokens = EXCLUDED.output_tokens,
+        latency_ms = EXCLUDED.latency_ms,
+        mtp_acceptance_rate = EXCLUDED.mtp_acceptance_rate,
+        retention_score = EXCLUDED.retention_score,
+        created_at = CURRENT_TIMESTAMP;
+END;
+$$ LANGUAGE plpgsql;
+
+BEGIN;
+
+INSERT INTO models (model_name, architecture, parameter_count, context_length) VALUES
+('Llama-3-8B', 'llama', 8000000000, 8192),
+('Mistral-7B', 'mistral', 7000000000, 32768);
+
+INSERT INTO fixtures (fixture_name, fixture_kind, token_count, description) VALUES
+('short_qa', 'short_context', 128, 'Short question answering benchmark'),
+('long_summary', 'long_context', 16384, 'Long document summarization task'),
+('code_gen', 'code_generation', 512, 'Code generation from natural language prompt'),
+('multi_turn_chat', 'multi_turn', 2048, 'Multi-turn conversation simulation');
+
+INSERT INTO runs (model_id, fixture_id, run_timestamp, batch_size, sequence_length, status) VALUES
+(1, 1, '2024-01-01 10:00:00', 4, 128, 'completed'),
+(1, 1, '2024-01-01 10:05:00', 4, 128, 'completed'),
+(1, 1, '2024-01-01 10:10:00', 4, 128, 'completed'),
+(1, 1, '2024-01-01 10:15:00', 4, 128, 'completed'),
+(1, 1, '2024-01-01 10:20:00', 4, 128, 'completed'),
+(1, 1, '2024-01-01 10:25:00', 4, 128, 'completed'),
+(1, 1, '2024-01-01 10:30:00', 4, 128, 'completed'),
+(1, 1, '2024-01-01 10:35:00', 4, 128, 'completed'),
+(1, 2, '2024-01-01 11:00:00', 2, 16384, 'completed'),
+(1, 2, '2024-01-01 11:05:00', 2, 16384, 'completed'),
+(1, 2, '2024-01-01 11:10:00', 2, 16384, 'completed'),
+(1, 2, '2024-01-01 11:15:00', 2, 16384, 'completed'),
+(1, 2, '2024-01-01 11:20:00', 2, 16384, 'completed'),
+(1, 2, '2024-01-01 11:25:00', 2, 16384, 'completed'),
+(1, 2, '2024-01-01 11:30:00', 2, 16384, 'completed'),
+(1, 2, '2024-01-01 11:35:00', 2, 16384, 'completed'),
+(1, 3, '2024-01-01 12:00:00', 8, 512, 'completed'),
+(1, 3, '2024-01-01 12:05:00', 8, 512, 'completed'),
+(1, 3, '2024-01-01 12:10:00', 8, 512, 'completed'),
+(1, 3, '2024-01-01 12:15:00', 8, 512, 'completed'),
+(1, 3, '2024-01-01 12:20:00', 8, 512, 'completed'),
+(1, 3, '2024-01-01 12:25:00', 8, 512, 'completed'),
+(1, 3, '2024-01-01 12:30:00', 8, 512, 'completed'),
+(1, 3, '2024-01-01 12:35:00', 8, 512, 'completed'),
+(1, 4, '2024-01-01 13:00:00', 4, 2048, 'completed'),
+(1, 4, '2024-01-01 13:05:00', 4, 2048, 'completed'),
+(1, 4, '2024-01-01 13:10:00', 4, 2048, 'completed'),
+(1, 4, '2024-01-01 13:15:00', 4, 2048, 'completed'),
+(1, 4, '2024-01-01 13:20:00', 4, 2048, 'completed'),
+(1, 4, '2024-01-01 13:25:00', 4, 2048, 'completed'),
+(1, 4, '2024-01-01 13:30:00', 4, 2048, 'completed'),
+(1, 4, '2024-01-01 13:35:00', 4, 2048, 'completed'),
+(2, 1, '2024-01-01 10:00:00', 4, 128, 'completed'),
+(2, 1, '2024-01-01 10:05:00', 4, 128, 'completed'),
+(2, 1, '2024-01-01 10:10:00', 4, 128, 'completed'),
+(2, 1, '2024-01-01 10:15:00', 4, 128, 'completed'),
+(2, 1, '2024-01-01 10:20:00', 4, 128, 'completed'),
+(2, 1, '2024-01-01 10:25:00', 4, 128, 'completed'),
+(2, 1, '2024-01-01 10:30:00', 4, 128, 'completed'),
+(2, 1, '2024-01-01 10:35:00', 4, 128, 'completed'),
+(2, 2, '2024-01-01 11:00:00', 2, 16384, 'completed'),
+(2, 2, '2024-01-01 11:05:00', 2, 16384, 'completed'),
+(2, 2, '2024-01-01 11:10:00', 2, 16384, 'completed'),
+(2, 2, '2024-01-01 11:15:00', 2, 16384, 'completed'),
+(2, 2, '2024-01-01 11:20:00', 2, 16384, 'completed'),
+(2, 2, '2024-01-01 11:25:00', 2, 16384, 'completed'),
+(2, 2, '2024-01-01 11:30:00', 2, 16384, 'completed'),
+(2, 2, '2024-01-01 11:35:00', 2, 16384, 'completed'),
+(2, 3, '2024-01-01 12:00:00', 8, 512, 'completed'),
+(2, 3, '2024-01-01 12:05:00', 8, 512, 'completed'),
+(2, 3, '2024-01-01 12:10:00', 8, 512, 'completed'),
+(2, 3, '2024-01-01 12:15:00', 8, 512, 'completed'),
+(2, 3, '2024-01-01 12:20:00', 8, 512, 'completed'),
+(2, 3, '2024-01-01 12:25:00', 8, 512, 'completed'),
+(2, 3, '2024-01-01 12:30:00', 8, 512, 'completed'),
+(2, 3, '2024-01-01 12:35:00', 8, 512, 'completed'),
+(2, 4, '2024-01-01 13:00:00', 4, 2048, 'completed'),
+(2, 4, '2024-01-01 13:05:00', 4, 2048, 'completed'),
+(2, 4, '2024-01-01 13:10:00', 4, 2048, 'completed'),
+(2, 4, '2024-01-01 13:15:00', 4, 2048, 'completed'),
+(2, 4, '2024-01-01 13:20:00', 4, 2048, 'completed'),
+(2, 4, '2024-01-01 13:25:00', 4, 2048, 'completed'),
+(2, 4, '2024-01-01 13:30:00', 4, 2048, 'completed'),
+(2, 4, '2024-01-01 13:35:00', 4, 2048, 'completed');
+
+INSERT INTO request_metrics (run_id, request_index, input_tokens, output_tokens, latency_ms, mtp_acceptance_rate, retention_score) VALUES
+(1, 0, 128, 64, 150.5, 0.85, 0.92),
+(1, 1, 128, 64, 148.2, 0.87, 0.93),
+(1, 2, 128, 64

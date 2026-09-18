@@ -1,0 +1,128 @@
+Let Patrick’s walking rate be \(p\) miles per hour, and let his total travel time be \(t\) hours.
+
+Then:
+
+- Patrick: distance \(= pt\)
+- Tanya: started 1 hour later, so her time is \(t-1\), and her rate is \(p+2\)
+- Jose: started 2 hours after Patrick, so his time is \(t-2\), and his rate is \(p+2+7=p+9\)
+
+Since all three cover the same distance,
+
+\[
+pt=(p+2)(t-1)
+\]
+
+Expanding:
+
+\[
+pt=pt-p+2t-2
+\]
+
+\[
+p=2t-2
+\]
+
+Also,
+
+\[
+pt=(p+9)(t-2)
+\]
+
+Expanding:
+
+\[
+pt=pt-2p+9t-18
+\]
+
+\[
+2p=9t-18
+\]
+
+Substitute \(p=2t-2\):
+
+\[
+2(2t-2)=9t-18
+\]
+
+\[
+4t-4=9t-18
+\]
+
+\[
+5t=14
+\]
+
+\[
+t=\frac{14}{5}
+\]
+
+Then
+
+\[
+p=2\cdot \frac{14}{5}-2=\frac{28}{5}-\frac{10}{5}=\frac{18}{5}
+\]
+
+So the distance is
+
+\[
+D=pt=\frac{18}{5}\cdot \frac{14}{5}=\frac{252}{25}
+\]
+
+Thus \(m=252\) and \(n=25\), so
+
+\[
+m+n=252+25=277
+\]
+
+\[
+\boxed{277}
+\]
+<<<REASONING>>>
+We need solve problem. Let's restate.
+Patrick starts walking at constant rate v. School to park distance D.
+Tanya starts 1 hour after Patrick, runs at v+2 mph. Jose starts 1 hour after Tanya, i.e., 2 hours after Patrick, bikes at (v+2)+7 = v+9 mph. All arrive at park same time. Need D = m/n reduced, m+n.
+
+Let t be Patrick's travel time (hours) from start to arrival. Since they all arrive same time: Tanya started 1 h after Patrick, so Tanya travel time = t - 1. Jose started 2 h after Patrick, travel time = t - 2.
+Distances: D = v t = (v+2)(t-1) = (v+9)(t-2).
+Need solve for v, t. Need positive travel times, so t > 2? Jose after 2h, must have positive time, t > 2 (if t=2 distance 0 but no, positive). 
+Set first two: v t = (v+2)(t-1) = vt - v + 2t -2. So 0 = -v + 2t -2 => v = 2t - 2.
+Set first and third: v t = (v+9)(t-2) = vt -2v + 9t -18 => 0 = -2v + 9t -18 => 2v = 9t -18 => v = (9t -18)/2.
+Equate: 2t -2 = (9t -18)/2 => 4t -4 = 9t -18 => 5t = 14 => t = 14/5 = 2.8 h. v = 2*(14/5) -2 = 28/5 - 10/5 = 18/5 = 3.6 mph.
+D = v t = (18/5)*(14/5)=252/25 = 10.08. Check: Tanya speed 25/5=5 mph, time 9/5=1.8, D=9? Wait 5*1.8=9. Inconsistent! Let's re-evaluate: v+2 = 18/5 +2 = 18/5+10/5=28/5=5.6, not 5; time = 14/5 -1 =9/5, product = (28/5)*(9/5)=252/25. Good. Jose speed v+9=18/5+45/5=63/5=12.6, time=14/5-2=4/5, product=252/25. Good.
+So m=252, n=25, relatively prime? gcd 252,25 =1. Sum=277. Need final answer boxed.
+Need step-by-step. Ensure no hidden nuance: "One hour after Tanya left, Jose started" yes 2 hours after Patrick. Constant rates, all arrived same time. We assume same time of day; Tanya travel time one less, Jose two less. Yes.
+
+Need provide final with boxed. Could also solve alternative. We must include all steps. Desired oververbosity 9, but simple. We can present variables, equations, solve. Ensure answer inside boxed{}.
+
+Let's be careful: "Patrick started walking at a constant rate along a straight road from school to the park. One hour after Patrick left, Tanya started running along same road... One hour after Tanya left, Jose started bicycling... Tanya ran at constant rate 2 mph faster than Patrick walked, Jose bicycled at 7 mph faster than Tanya ran, and all three arrived at park at same time." If Patrick's rate p, Tanya p+2, Jose p+9. Let Patrick took x hours. Then Tanya took x-1, Jose x-2. Distances equal.
+Equation:
+p x = (p+2)(x-1)
+p x = (p+9)(x-2)
+Expanding: px = px - p + 2x -2 => p = 2x -2.
+px = px -2p +9x -18 => 2p = 9x -18 => p = (9x-18)/2.
+Then 2x - 2 = (9x-18)/2 => 4x -4 =9x-18 => 5x=14 => x=14/5.
+p = 18/5.
+Distance = (18/5)(14/5)=252/25.
+m+n=277.
+
+Double-check if any issue with units: mph and hours, miles. Yes.
+Could also solve using rates difference/time difference. There is classic relation: If faster starts 1h later and arrives same time, distance equals rate difference times gap? For Patrick/Tanya: D = (p+2)(t-1), p t. Difference in distance if both traveled t hours? (p+2)t - pt = 2t, but Tanya had 1 hour head start, actually D = p(t+1)? Wait, if Tanya started 1 h after Patrick, Patrick had 1h head start. At Tanya's start, Patrick distance = p. Let Tanya's travel time s, D = (p+2)s; Patrick's total time s+1: D=p(s+1). Then p(s+1)=(p+2)s => p=2s. Here s = t-1; p=2(t-1)=2t-2. Yes. For Jose: start 2h after Patrick; at Jose start Patrick distance 2p; D=p(t) with Jose time t-2 => p(t)=(p+9)(t-2) => 2p=9(t-2)? Wait if Jose starts 2h after Patrick, at Jose start Patrick distance = 2p. Let Jose time r, D = (p+9)r; Patrick total r+2 = t, D=p(r+2). Equate: p(r+2)=p r +9r => 2p=9r => p=4.5r. Since r=t-2, p=(9/2)(t-2). My earlier equation: p t = (p+9)(t-2) => pt = pt -2p +9t -18 => 2p = 9t-18 = 9(t-2). same. Good.
+Then solve: 2(t-1)= (9/2)(t-2) => 4t-4=9t-18 => t=14/5. Good.
+
+Need final only? User asked solve step by step. We can include equations. Put answer boxed.
+
+Need ensure final answer includes \boxed{277}.
+
+Any possibility D = m/n where m,n relatively prime positive integers, m+n=277. Yes.
+
+Need think if there are alternative solutions? Equations linear, unique. Check positivity: p=3.6, t=2.8, Jose time 0.8 >0. Tanya 1.8 >0. fine. Distance 10.08. If t less than 2, Jose time negative impossible. Our solution t=2.8.
+
+Now final. Use concise but detailed. Ensure no analysis. Final can be:
+Let Patrick's speed be p mph, and let his total time be T hours. Then Tanya speed p+2, time T-1; Jose speed p+9, time T-2. Distance equations... solve.
+
+Let's ensure expansion:
+pT = (p+2)(T-1) = pT - p + 2T -2 -> p = 2T - 2.
+pT = (p+9)(T-2) = pT -2p +9T -18 -> 2p = 9T -18.
+Sub: 2(2T-2)=9T-18 -> 4T-4=9T-18 -> 5T=14 -> T=14/5. p=18/5. D=pT=252/25. m+n=277.
+
+Need maybe explicitly gcd: 252 = 2^2*3^2*7, 25=5^2, coprime. So m+n=277. Box.

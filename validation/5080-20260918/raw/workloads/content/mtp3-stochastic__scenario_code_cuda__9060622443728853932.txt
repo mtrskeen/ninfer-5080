@@ -1,0 +1,453 @@
+# CUDA 13.1 / C++20 — Row-wise BF16 Normalization on sm_120a
+
+## `CMakeLists.txt`
+
+```cmake
+cmake_minimum_required(VERSION 3.24)
+project(bf16_row_normalize LANGUAGES CXX C)
+
+set(CMAKE_CXX_STANDARD 20)
+set(CMAKE_CXX_STANDARD_REQUIRED ON)
+set(CMAKE_CUDA_STANDARD 20)
+set(CMAKE_CUDA_STANDARD_REQUIRED ON)
+
+# ---------------------------------------------------------------------------
+# CUDA configuration for sm_120a (Blackwell B-series, e.g. B200/GB200)
+# ---------------------------------------------------------------------------
+set(CMAKE_CUDA_ARCHITECTURES "120a" CACHE STRING "CUDA architectures to build for")
+message(STATUS "CUDA architectures: ${CMAKE_CUDA_ARCHITECTURES}")
+
+find_package(CUDA REQUIRED)
+
+add_executable(bf16_row_normalize
+    src/main.cpp
+    src/bf16.hpp
+    src/device_buffers.hpp
+    src/kernels.cu
+    src/reference.hpp
+    src/timing.hpp
+    src/input_gen.hpp
+    src/verify.hpp
+    src/util.hpp
+)
+
+target_compile_features(bf16_row_normalize PRIVATE cxx_std_20)
+
+target_link_libraries(bf16_row_normalize PRIVATE CUDA::cudart)
+
+target_include_directories(bf16_row_normalize PRIVATE
+    ${CMAKE_CURRENT_SOURCE_DIR}/src
+)
+
+# Compile flags for the host C++ files
+target_compile_options(bf16_row_normalize PRIVATE
+    -Wall -Wextra -O2
+)
+
+# Compile options for the CUDA device code
+target_compile_options(bf16_row_normalize PRIVATE
+    $<$<COMPILE_LANGUAGE:CUDA>:
+        --use_fast_math
+        -lineinfo
+        -Xptxas -v
+        -gencode arch=compute_120a,code=sm_120a
+    >
+)
+
+# Ensure deterministic behaviour is not broken by fast-math in a way that
+# silently changes semantics; we still use it because the reference path
+# uses plain FP32 without fast-math and we compare with a tolerance.
+```
+
+---
+
+## `src/bf16.hpp`
+
+```cpp
+#pragma once
+
+#include <cstdint>
+#include <cmath>
+#include <limits>
+#include <stdexcept>
+#include <string>
+
+namespace bf16 {
+
+// ---------------------------------------------------------------------------
+// Bit-level conversion helpers (host-side, no GPU intrinsics needed here)
+// ---------------------------------------------------------------------------
+
+/// Convert an IEEE-754 single-precision float to a bfloat16 bit pattern.
+/// Uses round-to-nearest-even (RNE) via the standard "add magic + truncate"
+/// technique which is exact for the BF16 range.
+inline uint16_t float_to_bf16_bits(float f) noexcept {
+    // Handle NaN / Inf propagation
+    uint32_t bits = __builtin_bit_cast(uint32_t, f);
+    if ((bits & 0x7F800000u) == 0x7F800000u) {
+        // Inf or NaN: preserve sign and exponent/mantissa top bits
+        uint16_t result = static_cast<uint16_t>((bits >> 16) | 0x00FFu);
+        return result;
+    }
+
+    // Round-to-nearest-even: add 0x7FFF then shift right 16
+    // This implements RNE correctly for the 16-bit mantissa truncation.
+    uint32_t rounded = (bits + 0x7FFFu) & 0xFFFF0000u;
+    return static_cast<uint16_t>(rounded >> 16);
+}
+
+/// Convert a bfloat16 bit pattern back to an IEEE-754 single-precision float.
+inline float bf16_bits_to_float(uint16_t b) noexcept {
+    uint32_t bits = static_cast<uint32_t>(b) << 16;
+    return __builtin_bit_cast(float, bits);
+}
+
+/// Struct representing a single BF16 value with convenient accessors.
+struct Value {
+    uint16_t raw{};
+
+    constexpr float to_float() const noexcept {
+        return bf16_bits_to_float(raw);
+    }
+
+    constexpr static Value from_float(float f) noexcept {
+        return Value{float_to_bf16_bits(f)};
+    }
+
+    constexpr bool operator==(const Value& o) const noexcept { return raw == o.raw; }
+    constexpr bool operator!=(const Value& o) const noexcept { return raw != o.raw; }
+};
+
+// ---------------------------------------------------------------------------
+// Vectorized types matching CUDA's __nv_bfloat162 layout
+// ---------------------------------------------------------------------------
+
+/// A pair of packed BF16 values stored in a 32-bit word, matching the
+/// hardware layout of __nv_bfloat162 (low half = element 0, high half = element 1).
+struct alignas(4) Packed2 {
+    uint16_t x;  // element 0
+    uint16_t y;  // element 1
+};
+
+static_assert(sizeof(Packed2) == 4, "Packed2 must be 32 bits");
+static_assert(alignof(Packed2) == 4, "Packed2 must be 4-byte aligned");
+
+/// A quad of packed pairs → 128-bit vector, matching __nv_bfloat164 layout
+/// when available, or two __nv_bfloat162 registers.
+struct alignas(16) Packed4 {
+    Packed2 lo;  // elements 0, 1
+    Packed2 hi;  // elements 2, 3
+};
+
+static_assert(sizeof(Packed4) == 8, "Packed4 must be 64 bits (two 32-bit halves)");
+static_assert(alignof(Packed4) == 8, "Packed4 must be 8-byte aligned");
+
+/// An octet of packed pairs → 256-bit vector for maximum memory throughput.
+/// On sm_120a, 256-bit loads/stores are supported (LDG.E.256 / STG.E.256).
+struct alignas(16) Packed8 {
+    Packed4 lo;  // elements 0–3
+    Packed4 hi;  // elements 4–7
+};
+
+static_assert(sizeof(Packed8) == 16, "Packed8 must be 128 bits");
+static_assert(alignof(Packed8) == 16, "Packed8 must be 16-byte aligned");
+
+// ---------------------------------------------------------------------------
+// Constants
+// ---------------------------------------------------------------------------
+
+constexpr int kVectorWidth = 8;   // number of BF16 elements per 128-bit vector load
+constexpr int kElementsPerThread = 8;  // each thread processes this many contiguous elements
+
+inline std::string describe_precision() {
+    return "BF16 (Brain Float 16): 1 sign, 8 exponent, 7 mantissa";
+}
+
+} // namespace bf16
+```
+
+---
+
+## `src/device_buffers.hpp`
+
+```cpp
+#pragma once
+
+#include <cuda_runtime.h>
+#include <cstdint>
+#include <cstddef>
+#include <stdexcept>
+#include <string>
+#include <memory>
+
+namespace devbuf {
+
+// ---------------------------------------------------------------------------
+// RAII wrapper for a pinned-host ↔ device buffer pair
+// ---------------------------------------------------------------------------
+
+class DeviceBuffer {
+public:
+    DeviceBuffer(size_t num_elements, size_t bytes_per_element, const char* name = "")
+        : num_elements_(num_elements),
+          bytes_per_element_(bytes_per_element),
+          total_bytes_(num_elements * bytes_per_element),
+          name_(name)
+    {
+        if (total_bytes_ == 0) {
+            throw std::runtime_error(std::string("DeviceBuffer '") + name_ +
+                                     "': zero-size allocation");
+        }
+
+        // Allocate device memory
+        cudaError_t err = cudaMalloc(&d_ptr_, total_bytes_);
+        if (err != cudaSuccess) {
+            d_ptr_ = nullptr;
+            throw std::runtime_error(std::string("cudaMalloc failed for '") + name_ +
+                                     "': " + cudaGetErrorString(err));
+        }
+
+        // Allocate pinned host memory for faster H2D/D2H transfers
+        err = cudaMallocHost(&h_ptr_, total_bytes_);
+        if (err != cudaSuccess) {
+            h_ptr_ = nullptr;
+            cudaFree(d_ptr_);
+            d_ptr_ = nullptr;
+            throw std::runtime_error(std::string("cudaMallocHost failed for '") + name_ +
+                                     "': " + cudaGetErrorString(err));
+        }
+
+        // Zero-initialize both sides
+        memset(h_ptr_, 0, total_bytes_);
+        cudaMemcpy(d_ptr_, h_ptr_, total_bytes_, cudaMemcpyHostToDevice);
+    }
+
+    ~DeviceBuffer() {
+        if (d_ptr_) {
+            cudaFree(d_ptr_);
+            d_ptr_ = nullptr;
+        }
+        if (h_ptr_) {
+            cudaFreeHost(h_ptr_);
+            h_ptr_ = nullptr;
+        }
+    }
+
+    // Non-copyable, movable
+    DeviceBuffer(const DeviceBuffer&) = delete;
+    DeviceBuffer& operator=(const DeviceBuffer&) = delete;
+
+    DeviceBuffer(DeviceBuffer&& other) noexcept
+        : d_ptr_(other.d_ptr_),
+          h_ptr_(other.h_ptr_),
+          num_elements_(other.num_elements_),
+          bytes_per_element_(other.bytes_per_element_),
+          total_bytes_(other.total_bytes_),
+          name_(std::move(other.name_))
+    {
+        other.d_ptr_ = nullptr;
+        other.h_ptr_ = nullptr;
+        other.num_elements_ = 0;
+        other.bytes_per_element_ = 0;
+        other.total_bytes_ = 0;
+    }
+
+    DeviceBuffer& operator=(DeviceBuffer&& other) noexcept {
+        if (this != &other) {
+            if (d_ptr_) cudaFree(d_ptr_);
+            if (h_ptr_) cudaFreeHost(h_ptr_);
+            d_ptr_ = other.d_ptr_;
+            h_ptr_ = other.h_ptr_;
+            num_elements_ = other.num_elements_;
+            bytes_per_element_ = other.bytes_per_element_;
+            total_bytes_ = other.total_bytes_;
+            name_ = std::move(other.name_);
+            other.d_ptr_ = nullptr;
+            other.h_ptr_ = nullptr;
+            other.num_elements_ = 0;
+            other.bytes_per_element_ = 0;
+            other.total_bytes_ = 0;
+        }
+        return *this;
+    }
+
+    void* device_ptr() const noexcept { return d_ptr_; }
+    void* host_ptr() const noexcept { return h_ptr_; }
+    const void* device_ptr() const noexcept { return d_ptr_; }
+    const void* host_ptr() const noexcept { return h_ptr_; }
+
+    size_t num_elements() const noexcept { return num_elements_; }
+    size_t bytes_per_element() const noexcept { return bytes_per_element_; }
+    size_t total_bytes() const noexcept { return total_bytes_; }
+    const std::string& name() const noexcept { return name_; }
+
+    /// Copy current host contents to device
+    void upload(cudaStream_t stream = 0) {
+        check_cuda(cudaMemcpyAsync(d_ptr_, h_ptr_, total_bytes_,
+                                    cudaMemcpyHostToDevice, stream),
+                   ("upload(" + name_ + ")").c_str());
+    }
+
+    /// Copy device contents back to pinned host buffer
+    void download(cudaStream_t stream = 0) {
+        check_cuda(cudaMemcpyAsync(h_ptr_, d_ptr_, total_bytes_,
+                                    cudaMemcpyDeviceToHost, stream),
+                   ("download(" + name_ + ")").c_str());
+    }
+
+private:
+    template<typename... Args>
+    static void check_cuda(cudaError_t err, Args&&... args) {
+        if (err != cudaSuccess) {
+            throw std::runtime_error(std::forward<Args>(args)... +
+                                     ": " + cudaGetErrorString(err));
+        }
+    }
+
+    void* d_ptr_{nullptr};
+    void* h_ptr_{nullptr};
+    size_t num_elements_{0};
+    size_t bytes_per_element_{0};
+    size_t total_bytes_{0};
+    std::string name_;
+};
+
+} // namespace devbuf
+```
+
+---
+
+## `src/kernels.cu`
+
+```cpp
+#include <cuda_runtime.h>
+#include <cuda_bf16.h>
+#include <cstdint>
+#include <cstdio>
+#include <stdexcept>
+
+#include "bf16.hpp"
+
+// ---------------------------------------------------------------------------
+// Device-side BF16 intrinsics wrappers
+// ---------------------------------------------------------------------------
+
+/// Convert a packed pair of floats to a packed BF16 pair using HW instruction.
+__device__ inline __nv_bfloat162 float2_to_bf162(float lo, float hi) {
+    return __floats2bfloat162_rn(lo, hi);
+}
+
+/// Unpack a packed BF16 pair into two floats.
+__device__ inline void bf162_to_float2(__nv_bfloat162 b, float& lo, float& hi) {
+    float2 f = __bfloat1622float2(b);
+    lo = f.x;
+    hi = f.y;
+}
+
+// ---------------------------------------------------------------------------
+// Vectorized row-normalization kernel
+//
+// Each thread block handles one or more rows.
+// Within a row, threads cooperate to compute the L2 norm (in FP32) and then
+// write normalized BF16 output.
+//
+// Memory layout assumption:
+//   Matrix is stored in row-major order: A[row][col]
+//   Each row has exactly COLS BF16 elements.
+//   COLS is a multiple of kVectorWidth (8) so that 128-bit vector accesses
+//   are always aligned.
+//
+// Launch geometry:
+//   gridDim.x = ceil(NUM_ROWS / ROWS_PER_BLOCK)
+//   blockDim.x = THREADS_PER_ROW
+//   Each thread processes kVectorWidth (= 8) consecutive BF16 elements per
+//   iteration, striding across the row.
+// ---------------------------------------------------------------------------
+
+#define WARP_SIZE 32
+
+template <int THREADS_PER_ROW>
+__global__ void normalize_rows_kernel(
+    const __nv_bfloat16* __restrict__ input,
+    __nv_bfloat16* __restrict__ output,
+    int num_rows,
+    int cols)
+{
+    // Each block handles ROWS_PER_BLOCK = blockDim.y rows
+    const int row_local = blockIdx.x * blockDim.y + threadIdx.y;
+    const int global_row = row_local;
+
+    if (global_row >= num_rows) return;
+
+    const int tid = threadIdx.x;
+
+    // Pointer to the start of this row in the matrix
+    const __nv_bfloat16* row_in = input + static_cast<size_t>(global_row) * cols;
+    __nv_bfloat16* row_out = output + static_cast<size_t>(global_row) * cols;
+
+    // Number of vector-groups in this row
+    const int vec_groups = cols / bf16::kVectorWidth;
+
+    // Phase 1: Compute partial sum-of-squares in FP32
+    // Each thread accumulates over its assigned vector groups.
+    // We use a shared-memory reduction within the warp, then across warps.
+
+    float local_ss = 0.0f;
+
+    // Stride through vector groups assigned to this thread
+    for (int g = tid; g < vec_groups; g += THREADS_PER_ROW) {
+        // Load 8 BF16 values as a 128-bit vector
+        // reinterpret as 4 × __nv_bfloat162
+        const __nv_bfloat162* vptr = reinterpret_cast<const __nv_bfloat162*>(row_in + g * bf16::kVectorWidth);
+
+        // Unroll the 4 packed-pairs
+        #pragma unroll
+        for (int i = 0; i < 4; ++i) {
+            float2 f = __bfloat1622float2(vptr[i]);
+            local_ss += f.x * f.x + f.y * f.y;
+        }
+    }
+
+    // Warp-level reduction of local_ss
+    // Use shuffle-down within the warp
+    #pragma unroll
+    for (int offset = WARP_SIZE / 2; offset > 0; offset >>= 1) {
+        local_ss += __shfl_down_sync(0xFFFFFFFF, local_ss, offset);
+    }
+
+    // Shared memory for inter-warp reduction
+    __shared__ float warp_sums[WARP_SIZE];  // indexed by warp_id
+    const int warp_id = tid / WARP_SIZE;
+    const int lane_id = tid % WARP_SIZE;
+
+    if (lane_id == 0) {
+        warp_sums[warp_id] = local_ss;
+    }
+    __syncthreads();
+
+    // Reduce warp_sums[0..num_warps-1] into a single value
+    // Only warp 0 participates in the final reduction
+    const int num_warps = THREADS_PER_ROW / WARP_SIZE;
+    if (warp_id == 0) {
+        float s = (lane_id < num_warps) ? warp_sums[lane_id] : 0.0f;
+        #pragma unroll
+        for (int offset = WARP_SIZE / 2; offset > 0; offset >>= 1) {
+            s += __shfl_down_sync(0xFFFFFFFF, s, offset);
+        }
+        if (lane_id == 0) {
+            warp_sums[0] = s;  // broadcast location
+        }
+    }
+    __syncthreads();
+
+    const float total_ss = warp_sums[0];
+
+    // Guard against zero-norm rows (all-zero input)
+    const float inv_norm = (total_ss > 0.0f) ? rsqrtf(total_ss) : 0.0f;
+
+    // Broadcast inv_norm to all threads in the block via shared memory
+    __shared__ float shared_inv_norm;
+    if (tid == 0) {
+        shared_inv_norm = inv_norm;
+    }
+    __syncthreads();

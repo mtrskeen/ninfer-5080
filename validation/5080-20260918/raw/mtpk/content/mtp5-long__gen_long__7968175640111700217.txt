@@ -1,0 +1,71 @@
+2. The arithmetic intensity of a GEMM operation increases with matrix dimensions, shifting the bottleneck from memory bandwidth to compute throughput for large tensors.
+3. Cache hierarchy design aims to minimize the average memory access latency by exploiting temporal and spatial locality in data access patterns.
+4. Instruction-level parallelism allows multiple operations to execute concurrently within a single core, provided there are no data dependencies or resource conflicts.
+5. Branch prediction accuracy directly impacts pipeline efficiency; mispredictions cause pipeline flushes that stall execution until the correct path is resolved.
+6. Vectorization transforms scalar operations into SIMD instructions, allowing a single instruction to process multiple data elements simultaneously.
+7. Memory coalescing ensures that consecutive memory accesses by threads in a warp map to contiguous physical addresses, maximizing bandwidth utilization.
+8. Register allocation constraints limit the number of variables that can be held in fast on-die storage, forcing spills to local memory when exceeded.
+9. The roofline model visualizes the relationship between arithmetic intensity and achievable performance, identifying whether a kernel is compute-bound or memory-bound.
+10. Pre-fetching data into the cache before it is needed hides memory latency, provided the pre-fetch distance is tuned correctly to avoid cache thrashing.
+11. Loop unrolling reduces loop overhead by executing multiple iterations in a single pass, increasing instruction-level parallelism but potentially increasing code size.
+12. Data layout swizzling rearranges memory access patterns to improve cache line utilization and reduce bank conflicts in shared memory or L1 cache.
+13. The critical path of a dependency graph determines the minimum possible execution time, as it represents the longest chain of dependent operations.
+14. Pipelining divides a complex operation into stages, allowing multiple instances of the operation to be in flight simultaneously, increasing throughput at the cost of latency.
+15. Shared memory acts as programmer-managed scratchpad memory, offering significantly lower latency than global memory but requiring explicit synchronization for correctness.
+16. Bank conflicts occur when multiple threads in a warp access different words within the same bank, serializing the accesses and reducing effective bandwidth.
+17. Double buffering techniques allow one buffer to be read while another is being written, enabling overlap of computation and memory transfer to hide latency.
+18. The memory wall refers to the growing disparity between processor speed and memory bandwidth, which limits the ability of CPUs to keep up with data demands.
+19. Non-temporal loads and stores bypass the cache hierarchy, preventing pollution of cache lines with data that will not be reused soon.
+20. Instruction cache misses are more detrimental than data cache misses because they stall the entire fetch stage, halting all subsequent execution.
+21. Out-of-order execution allows the processor to execute independent instructions before their predecessors, breaking sequential bottlenecks and improving utilization.
+22. The write-back policy updates the main memory only when a cache line is evicted, reducing traffic to slower memory but requiring dirty bit tracking.
+23. Write-through policy updates both the cache and main memory simultaneously, ensuring consistency but increasing memory bus traffic and latency.
+24. Cache associativity determines how many sets a block can be placed in; higher associativity reduces conflict misses but increases tag lookup complexity.
+25. The L1 cache is split into separate instruction and data caches to avoid contention between fetching code and accessing data.
+26. Prefetcher accuracy metrics evaluate how often pre-fetched data is actually used before eviction, guiding the tuning of prefetch algorithms.
+27. Strided memory access patterns with large strides result in poor cache line utilization, as only a fraction of each loaded line is used.
+28. The memory subsystem includes not just DRAM but also the interconnects, controllers, and caches that mediate data movement between CPU and main memory.
+29. Latency hiding techniques rely on sufficient thread-level or instruction-level parallelism to keep the execution units busy while waiting for data.
+30. The TLB (Translation Lookaside Buffer) caches virtual-to-physical address translations, reducing the overhead of page table walks.
+31. Page fault handling involves interrupting execution to resolve missing pages, causing significant stalls if the working set exceeds physical memory.
+32. Huge pages reduce TLB pressure and page table size by mapping larger chunks of memory, improving performance for applications with large contiguous allocations.
+33. NUMA (Non-Uniform Memory Access) architectures require careful data placement to ensure processes access local memory nodes to minimize remote access penalties.
+34. Remote memory access in NUMA systems incurs higher latency and consumes inter-node bandwidth, degrading performance if not mitigated by locality-aware scheduling.
+35. The memory controller integrates with the CPU die or resides on a separate chip, managing refresh cycles, ECC checks, and command scheduling.
+36. DRAM refresh operations periodically overwrite cells to maintain charge, consuming bandwidth and introducing brief latency spikes during refresh bursts.
+37. Error-Correcting Code (ECC) memory detects and corrects single-bit errors, improving reliability at the cost of additional storage bits and logic overhead.
+38. Interleave memory across multiple channels or ranks to increase effective bandwidth by allowing concurrent access to different memory banks.
+39. Row buffer hits occur when consecutive accesses target the same open row in DRAM, resulting in significantly lower latency than row misses.
+40. The activate-precharge sequence in DRAM requires specific timing parameters (tRCD, tRP) that dictate the minimum time between row transitions.
+41. Write allocate policies load a cache line into the cache before writing to it, ensuring that subsequent reads see the updated value without going to main memory.
+42. Read allocate policies only bring data into the cache upon read requests, leaving writes to go directly to main memory, saving cache space for read-heavy workloads.
+43. Cache partitioning isolates resources for different tasks or cores, preventing one workload from starving another of cache capacity.
+44. Dynamic voltage and frequency scaling (DVFS) adjusts power consumption by varying voltage and frequency, balancing energy efficiency against performance needs.
+45. Power gating shuts down unused logic blocks or memory arrays, eliminating leakage current and reducing static power consumption during idle periods.
+46. The energy-delay product serves as a metric for evaluating hardware designs, balancing the cost of energy against the time required to complete a task.
+47. Leakage current increases exponentially with temperature, making thermal management critical for maintaining low static power in advanced process nodes.
+48. Dynamic power dissipation is proportional to capacitance, voltage squared, and frequency, highlighting the quadratic benefit of voltage reduction.
+49. Clock gating disables the clock signal to logic blocks that are not active, reducing dynamic power without affecting functional correctness.
+50. Multi-core architectures distribute work across multiple processing units, leveraging parallelism to overcome single-threaded performance limits.
+51. Thread migration costs arise when a thread is moved between cores, invalidating cache contents and requiring re-fetching of data.
+52. Load balancing algorithms dynamically assign tasks to available cores based on current utilization, aiming to minimize makespan and idle time.
+53. Scheduling policies such as CFS (Completely Fair Scheduler) aim to provide equal CPU time slices to runnable tasks, ensuring fairness in multi-user environments.
+54. Real-time operating systems use fixed-priority scheduling to guarantee worst-case response times for critical tasks, avoiding the unpredictability of fair schedulers.
+55. Context switching overhead includes saving and restoring register state, flushing caches, and updating metadata, which can dominate execution time for short tasks.
+56. Hyper-threading allows two logical threads to share physical execution resources, improving utilization when one thread is stalled on memory or branch misprediction.
+57. Core frequency scaling allows individual cores to operate at different frequencies, optimizing power usage based on the computational intensity of the assigned workload.
+58. The memory hierarchy pyramid illustrates the trade-off between capacity, speed, and cost, with registers at the top and disk storage at the bottom.
+59. Data compression in memory reduces the footprint of stored data, increasing effective capacity and potentially reducing bandwidth requirements if decompression is fast.
+60. In-memory computing moves logic closer to data, reducing the energy and latency costs associated with moving data between memory and processor.
+61. Near-memory computing places processing units adjacent to DRAM chips, minimizing data movement distances and reducing interconnect latency.
+62. The von Neumann bottleneck refers to the serialization of instruction fetch and data access through a single bus, limiting overall system throughput.
+63. Harvard architecture separates instruction and data buses, allowing simultaneous fetch and execution, which is common in DSPs and embedded systems.
+64. DMA (Direct Memory Access) allows peripherals to read from and write to main memory without CPU intervention, freeing the processor for other tasks.
+65. Scatter-gather I/O operations transfer data from multiple non-contiguous buffers to a single destination, offloading the assembly logic from the CPU.
+66. Zero-copy techniques minimize data copying between user space and kernel space, reducing CPU overhead and memory bandwidth consumption for I/O-intensive apps.
+67. The page table walk is a multi-step process to translate virtual addresses, which can be accelerated by multi-level TLBs and large pages.
+68. Address translation hardware must handle protection bits to enforce memory isolation between processes, preventing unauthorized access.
+69. Virtual memory provides an abstraction that allows processes to use more memory than physically available, using swap space as overflow.
+70. Swap thrashing occurs when the system spends more time paging data in and out of disk than executing useful work, severely degrading performance.
+71. Working set theory suggests that performance is optimal when the working set fits in physical memory, avoiding frequent page faults.
+72. Memory fragmentation leads

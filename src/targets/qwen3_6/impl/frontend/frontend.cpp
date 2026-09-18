@@ -606,15 +606,15 @@ public:
         }
         const std::uint64_t vision_tokens =
             std::min<std::uint64_t>(options.max_context, kMaximumVisionTokens);
-        processor.max_vision_tokens = vision_tokens;
-        processor.max_raw_patches   = vision_tokens * kRawPatchesPerVisionToken;
+        const std::uint64_t bytes_per_token =
+            kRawPatchesPerVisionToken * kPreparedVisionPatchFeatures * sizeof(std::uint16_t);
+        const std::uint64_t max_live_tokens =
+            bytes_per_token > 0 ? options.media_live_bytes / bytes_per_token : vision_tokens;
+        processor.max_vision_tokens = std::min(vision_tokens, max_live_tokens);
+        processor.max_raw_patches   = processor.max_vision_tokens * kRawPatchesPerVisionToken;
         if (vision_enabled) {
             const std::uint64_t minimum_live =
-                processor.max_raw_patches * kPreparedVisionPatchFeatures * sizeof(std::uint16_t);
-            if (minimum_live > options.media_live_bytes) {
-                throw std::invalid_argument(
-                    "media live-byte capacity cannot hold the maximum supported Vision prompt");
-            }
+                processor.max_raw_patches * bytes_per_token;
             media_cache = std::make_shared<fi::MediaPreprocessCache>(
                 options.media_cache_bytes, options.media_live_bytes,
                 options.media_preprocess_threads, static_cast<std::size_t>(minimum_live));

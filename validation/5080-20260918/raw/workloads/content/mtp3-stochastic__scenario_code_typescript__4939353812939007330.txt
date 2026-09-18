@@ -1,0 +1,491 @@
+# Request Metrics Service
+
+Below is a complete, self-contained TypeScript 5 service. It has **zero third-party runtime dependencies** (only `typescript` and `@types/node` as dev tools), strict typing throughout, incremental NDJSON parsing with bounded memory, pure-function statistics, three HTTP endpoints, malformed-input handling, and a full unit suite.
+
+```
+metrics-service/
+├── package.json
+├── tsconfig.json
+├── README.md
+└── src/
+    ├── types.ts          # shared strict domain types
+    ├── stats.ts          # mean / median / sample std-dev
+    ├── parser.ts         # incremental NDJSON parser + validation
+    ├── store.ts          # bounded in-memory aggregation
+    ├── server.ts         # HTTP server + routing + handlers
+    └── tests/
+        ├── stats.test.ts
+        ├── parser.test.ts
+        └── store.test.ts
+```
+
+---
+
+## `package.json`
+
+```json
+{
+  "name": "request-metrics-service",
+  "version": "1.0.0",
+  "description": "Newline-delimited request-metrics ingestion, aggregation, and reporting service.",
+  "type": "module",
+  "engines": { "node": ">=18" },
+  "main": "dist/index.js",
+  "scripts": {
+    "build": "tsc -p tsconfig.json",
+    "start": "node dist/index.js",
+    "dev": "npm run build && node dist/index.js",
+    "test": "npm run build && node --test dist/tests/*.test.js",
+    "clean": "rm -rf dist"
+  },
+  "devDependencies": {
+    "@types/node": "^20.11.0",
+    "typescript": "^5.4.5"
+  }
+}
+```
+
+> No `dependencies` block on purpose — the runtime uses only Node built-ins (`http`, `stream`, `crypto`).
+
+---
+
+## `tsconfig.json`
+
+```json
+{
+  "compilerOptions": {
+    "target": "ES2022",
+    "lib": ["ES2022"],
+    "module": "NodeNext",
+    "moduleResolution": "NodeNext",
+    "rootDir": "src",
+    "outDir": "dist",
+    "strict": true,
+    "noImplicitAny": true,
+    "strictNullChecks": true,
+    "noUncheckedIndexedAccess": true,
+    "noFallthroughCasesInSwitch": true,
+    "noImplicitReturns": true,
+    "noUnusedLocals": true,
+    "noUnusedParameters": true,
+    "exactOptionalPropertyTypes": true,
+    "forceConsistentCasingInFileNames": true,
+    "esModuleInterop": true,
+    "skipLibCheck": true,
+    "declaration": true,
+    "sourceMap": true
+  },
+  "include": ["src/**/*.ts"]
+}
+```
+
+---
+
+## `src/types.ts`
+
+```typescript
+/**
+ * Strict domain types for the request-metrics service.
+ * These are shared across the parser, store, and HTTP layer.
+ */
+
+/** A single validated request-metrics record (one NDJSON line). */
+export interface RequestMetric {
+  /** Globally unique identifier for this observation. */
+  id: string;
+  /** Model name the request was served by (e.g. "gpt-4"). */
+  model: string;
+  /** Fixture / prompt-set identifier (e.g. "arithmetic-100"). */
+  fixture: string;
+  /** Wall-clock timestamp of the request, ISO-8601 or epoch ms. */
+  timestamp: number;
+  /** End-to-end latency in milliseconds. */
+  latencyMs: number;
+  /** Prompt token count. */
+  inputTokens: number;
+  /** Completion token count. */
+  outputTokens: number;
+  /** Total tokens = inputTokens + outputTokens. */
+  totalTokens: number;
+  /** HTTP status code returned to the caller. */
+  statusCode: number;
+}
+
+/** Numeric field that participates in per-group statistics. */
+export type MetricField = 'latencyMs' | 'inputTokens' | 'outputTokens' | 'totalTokens';
+
+/** Per-field aggregate statistics over a group of records. */
+export interface FieldStats {
+  count: number;
+  mean: number;
+  median: number;
+  /** Sample standard deviation (n-1); null when count < 2. */
+  stddev: number | null;
+  min: number;
+  max: number;
+}
+
+/** Aggregate for one (model, fixture) group. */
+export interface GroupSummary {
+  model: string;
+  fixture: string;
+  count: number;
+  firstTimestamp: number;
+  lastTimestamp: number;
+  successCount: number;
+  errorCount: number;
+  /** Fraction of requests with a non-2xx status, in [0, 1]. */
+  errorRate: number;
+  fields: Record<MetricField, FieldStats>;
+}
+
+/** The full summary document served by GET /summary. */
+export interface SummaryDocument {
+  generatedAt: number;
+  totalRecords: number;
+  groups: GroupSummary[];
+  /** Distinct models present, sorted lexicographically. */
+  models: string[];
+  /** Distinct fixtures present, sorted lexicographically. */
+  fixtures: string[];
+}
+
+/** A single record view served by GET /runs/:id. */
+export interface RunView {
+  id: string;
+  model: string;
+  fixture: string;
+  timestamp: number;
+  latencyMs: number;
+  inputTokens: number;
+  outputTokens: number;
+  totalTokens: number;
+  statusCode: number;
+  receivedAt: number;
+}
+
+/** Well-known response codes used by the HTTP layer. */
+export const Status = {
+  OK: 200,
+  NO_CONTENT: 204,
+  BAD_REQUEST: 400,
+  NOT_FOUND: 404,
+  METHOD_NOT_ALLOWED: 405,
+  PAYLOAD_TOO_LARGE: 413,
+  INTERNAL: 500,
+} as const;
+
+export type StatusCode = (typeof Status)[keyof typeof Status];
+
+/** Structured error payload shape for all non-2xx responses. */
+export interface ErrorBody {
+  error: string;
+  message: string;
+  details?: unknown;
+}
+
+/** Result of ingesting one NDJSON line. */
+export type LineResult =
+  | { ok: true; record: RequestMetric }
+  | { ok: false; error: ParseError };
+
+/** A structured parse/validation failure. */
+export interface ParseError {
+  code:
+    | 'INVALID_JSON'
+    | 'NOT_OBJECT'
+    | 'MISSING_FIELD'
+    | 'WRONG_TYPE'
+    | 'OUT_OF_RANGE'
+    | 'DUPLICATE_ID'
+    | 'TOO_MANY_RECORDS'
+    | 'EMPTY_PAYLOAD';
+  message: string;
+  field?: string;
+  line?: number;
+}
+
+/** Configuration knobs for the service. */
+export interface ServiceConfig {
+  /** Hard cap on distinct (model,fixture) groups before ingest is rejected. */
+  maxGroups: number;
+  /** Hard cap on total retained records (oldest evicted first) before rejection. */
+  maxRecords: number;
+  /** Max bytes for a single POST body. */
+  maxPayloadBytes: number;
+  /** Max characters for a single NDJSON line. */
+  maxLineChars: number;
+  /** Max length of a string-valued field. */
+  maxStringLen: number;
+  /** Inclusive upper bound for numeric metric fields. */
+  maxNumericValue: number;
+}
+
+/** Default configuration values. */
+export const DEFAULT_CONFIG: ServiceConfig = {
+  maxGroups: 10_000,
+  maxRecords: 1_000_000,
+  maxPayloadBytes: 10 * 1024 * 1024, // 10 MiB
+  maxLineChars: 64 * 1024,           // 64 KiB per line
+  maxStringLen: 256,
+  maxNumericValue: 1_000_000_000,
+};
+```
+
+---
+
+## `src/stats.ts`
+
+```typescript
+/**
+ * Pure, allocation-light statistics helpers.
+ * No external libraries — implemented from first principles.
+ */
+
+/** Arithmetic mean of a finite array of numbers. NaN if empty. */
+export function mean(xs: readonly number[]): number {
+  if (xs.length === 0) return Number.NaN;
+  let sum = 0;
+  for (let i = 0; i < xs.length; i++) sum += xs[i]!;
+  return sum / xs.length;
+}
+
+/**
+ * Median of a finite array of numbers.
+ * Returns NaN for an empty array; for odd n the middle element,
+ * for even n the average of the two central elements.
+ */
+export function median(xs: readonly number[]): number {
+  const n = xs.length;
+  if (n === 0) return Number.NaN;
+  if (n === 1) return xs[0]!;
+  // Work on a copy so we never mutate the caller's array.
+  const sorted = Array.from(xs).sort((a, b) => a - b);
+  const mid = Math.floor(n / 2);
+  if (n % 2 === 1) return sorted[mid]!;
+  return (sorted[mid - 1]! + sorted[mid]!) / 2;
+}
+
+/**
+ * Sample standard deviation (unbiased, divides by n-1).
+ * Returns null when there are fewer than two observations,
+ * since the sample variance is undefined for n < 2.
+ */
+export function sampleStdDev(xs: readonly number[]): number | null {
+  const n = xs.length;
+  if (n < 2) return null;
+  const m = mean(xs);
+  let ssq = 0;
+  for (let i = 0; i < n; i++) {
+    const d = xs[i]! - m;
+    ssq += d * d;
+  }
+  return Math.sqrt(ssq / (n - 1));
+}
+
+/** Minimum value, or NaN for an empty array. */
+export function min(xs: readonly number[]): number {
+  if (xs.length === 0) return Number.NaN;
+  let lo = Infinity;
+  for (let i = 0; i < xs.length; i++) {
+    const v = xs[i]!;
+    if (v < lo) lo = v;
+  }
+  return lo;
+}
+
+/** Maximum value, or NaN for an empty array. */
+export function max(xs: readonly number[]): number {
+  if (xs.length === 0) return Number.NaN;
+  let hi = -Infinity;
+  for (let i = 0; i < xs.length; i++) {
+    const v = xs[i]!;
+    if (v > hi) hi = v;
+  }
+  return hi;
+}
+
+/** Round to a fixed number of decimal places (for stable JSON output). */
+export function roundTo(x: number, decimals: number): number {
+  if (!Number.isFinite(x)) return x;
+  const f = 10 ** decimals;
+  return Math.round(x * f) / f;
+}
+```
+
+---
+
+## `src/parser.ts`
+
+```typescript
+import type {
+  LineResult,
+  MetricField,
+  ParseError,
+  RequestMetric,
+  ServiceConfig,
+} from './types.js';
+import { DEFAULT_CONFIG } from './types.js';
+
+/**
+ * Incremental, bounded, dependency-free NDJSON parser + validator.
+ *
+ * Feed it raw chunks via `push()` (as they arrive on the wire) and read
+ * completed results off `results`. Lines are split on '\n', re-assembled
+ * across chunk boundaries, size-bounded, JSON-parsed, and validated into
+ * strict `RequestMetric` objects. Nothing is buffered beyond a single
+ * in-flight line, so memory stays O(maxLineChars) regardless of payload.
+ */
+export class NdjsonParser {
+  private config: ServiceConfig;
+  /** Bytes seen so far in the current logical stream. */
+  private byteCount = 0;
+  /** Characters of the in-flight line not yet terminated by '\n'. */
+  private buffer = '';
+  /** Monotonic 1-based index of the next line to be emitted. */
+  private lineIndex = 0;
+  /** Results produced during the most recent push() call. */
+  private pending: LineResult[] = [];
+  /** True once a terminal condition (overflow) has been raised. */
+  private halted = false;
+
+  constructor(config: Partial<ServiceConfig> = {}) {
+    this.config = { ...DEFAULT_CONFIG, ...config };
+  }
+
+  /** Current in-flight buffer length in characters (exposed for observability). */
+  get bufferLength(): number {
+    return this.buffer.length;
+  }
+
+  /** Whether the parser has been stopped due to a terminal error. */
+  get isHalted(): number {
+    return this.halted ? 1 : 0;
+  }
+
+  /**
+   * Consume a chunk of raw text. Splits into lines, validates each, and
+   * appends results to the pending queue. Safe to call repeatedly.
+   */
+  push(chunk: string): void {
+    if (this.halted) return;
+    this.byteCount += Buffer.byteLength(chunk, 'utf8');
+
+    // Enforce the hard payload cap up front (rejects oversized bodies early).
+    if (this.byteCount > this.config.maxPayloadBytes) {
+      this.halt(
+        makeError('TOO_MANY_RECORDS', `payload exceeds ${this.config.maxPayloadBytes} bytes`)
+      );
+      return;
+    }
+
+    // Process every complete line in this chunk.
+    let start = 0;
+    while (true) {
+      const nl = chunk.indexOf('\n', start);
+      if (nl === -1) break;
+      const segment = chunk.slice(start, nl);
+      this.consumeLine(segment);
+      start = nl + 1;
+    }
+
+    // Whatever remains after the last newline is carried over.
+    const remainder = chunk.slice(start);
+    if (remainder.length > 0) {
+      this.buffer += remainder;
+      if (this.buffer.length > this.config.maxLineChars) {
+        this.halt(
+          makeError(
+            'INVALID_JSON',
+            `line exceeds ${this.config.maxLineChars} characters`,
+            undefined,
+            this.lineIndex
+          )
+        );
+        return;
+      }
+    }
+  }
+
+  /**
+   * Signal end-of-stream. Flushes any trailing unterminated line (if
+   * non-empty) so partial final lines are still validated.
+   */
+  finish(): void {
+    if (this.halted) return;
+    if (this.buffer.length > 0) {
+      const seg = this.buffer;
+      this.buffer = '';
+      this.consumeLine(seg);
+    }
+  }
+
+  /** Drain and return results produced since the last drain. */
+  drain(): LineResult[] {
+    const out = this.pending;
+    this.pending = [];
+    return out;
+  }
+
+  /** Whether any terminal error has been recorded. */
+  hasFatalError(): boolean {
+    return this.halted;
+  }
+
+  // ---- internals -------------------------------------------------------
+
+  private consumeLine(raw: string): void {
+    const line = raw.trim();
+    this.lineIndex += 1;
+
+    // Blank lines are ignored (common in streamed NDJSON).
+    if (line.length === 0) return;
+
+    const result = this.parseLine(line, this.lineIndex);
+    this.pending.push(result);
+  }
+
+  private halt(err: ParseError): void {
+    this.halted = true;
+    this.pending.push({ ok: false, error: err });
+    this.buffer = '';
+  }
+
+  private parseLine(line: string, lineNo: number): LineResult {
+    // 1. Must be valid JSON.
+    let parsed: unknown;
+    try {
+      parsed = JSON.parse(line);
+    } catch {
+      return { ok: false, error: makeError('INVALID_JSON', 'line is not valid JSON', undefined, lineNo) };
+    }
+
+    // 2. Must be a plain object (not array/null/primitive).
+    if (typeof parsed !== 'object' || parsed === null || Array.isArray(parsed)) {
+      return { ok: false, error: makeError('NOT_OBJECT', 'record must be a JSON object', undefined, lineNo) };
+    }
+
+    const obj = parsed as Record<string, unknown>;
+
+    // 3. Required string fields.
+    const id = requireString(obj, 'id', lineNo, this.config);
+    if (!id.ok) return { ok: false, error: id.error };
+
+    const model = requireString(obj, 'model', lineNo, this.config);
+    if (!model.ok) return { ok: false, error: model.error };
+
+    const fixture = requireString(obj, 'fixture', lineNo, this.config);
+    if (fixture.ok === false) return { ok: false, error: fixture.error };
+
+    // 4. Timestamp: number OR ISO-8601 string -> epoch ms.
+    const tsRaw = obj['timestamp'];
+    if (tsRaw === undefined) {
+      return { ok: false, error: makeError('MISSING_FIELD', 'missing field "timestamp"', 'timestamp', lineNo) };
+    }
+    let timestamp: number;
+    if (typeof tsRaw === 'number') {
+      if (!Number.isFinite(tsRaw) || tsRaw < 0) {
+        return { ok: false, error: makeError('OUT_OF_RANGE', 'timestamp must be a non-negative finite number', 'timestamp', lineNo) };
+      }
+      timestamp = tsRaw;
+    } else

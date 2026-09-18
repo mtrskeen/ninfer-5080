@@ -211,14 +211,17 @@ void VisionContext::encode(const VisionItemView& item, Tensor& output,
     }
     const VisionWorkspaceLayout layout = build_workspace_layout(
         patches64, tokens64, static_cast<std::size_t>(control.segment_count));
+    std::unique_ptr<DeviceArena> lazy_storage;
     if (workspace.capacity() < layout.bytes) {
-        throw std::invalid_argument("Vision workspace capacity is too small for request");
+        lazy_storage = std::make_unique<DeviceArena>(layout.bytes);
     }
     const auto patches  = static_cast<std::int32_t>(patches64);
     const auto tokens   = static_cast<std::int32_t>(tokens64);
     cudaStream_t stream = ctx_.stream;
     workspace.reset();
-    const DeviceSpan backing = workspace.alloc_bytes(layout.bytes, kWorkspaceAlignment);
+    const DeviceSpan backing = lazy_storage
+                                   ? DeviceSpan{lazy_storage->base(), layout.bytes}
+                                   : workspace.alloc_bytes(layout.bytes, kWorkspaceAlignment);
 
     Tensor position_ids = layout.position_ids.bind(backing);
     Tensor cu_seqlens   = layout.cu_seqlens.bind(backing);
@@ -307,6 +310,9 @@ void VisionContext::encode(const VisionItemView& item, Tensor& output,
     ops::gelu(hidden, ops::GeluMode::Exact, stream);
     ops::linear(hidden, *merger_.fc2, output, stream);
     ops::add_bias(*merger_.fc2_bias, output, stream);
+    if (lazy_storage) {
+        CUDA_CHECK(cudaStreamSynchronize(stream));
+    }
 }
 
 VisionPrefillSession::VisionPrefillSession(DeviceContext& device, const LoadedModelData& model,
@@ -319,9 +325,7 @@ VisionPrefillSession::VisionPrefillSession(DeviceContext& device, const LoadedMo
     if (plan_.control == nullptr || plan_.control->items.empty() || plan_.uses.empty()) {
         throw std::invalid_argument("Vision prefill plan has no suffix item spans");
     }
-    if (transient_.data == nullptr || transient_.alignment < kWorkspaceAlignment) {
-        throw std::invalid_argument("Vision item output transient is missing or misaligned");
-    }
+    // Fork: transient output is allocated lazily if missing or too small
     encoded_payloads_pending_release_.reserve(plan_.uses.size());
     timers_.reserve(plan_.uses.size());
 }
@@ -369,11 +373,15 @@ VisionChunk VisionPrefillSession::prepare_chunk(std::uint32_t begin, std::uint32
         checked_mul(checked_mul(static_cast<std::size_t>(VisionScheduleConfig::out_hidden),
                                 control.merged_count, "item output elements"),
                     dtype_size(DType::BF16), "item output bytes");
-    if (output_bytes > transient_.size) {
-        throw std::invalid_argument("Vision item output transient is too small");
+    void* output_data = transient_.data;
+    if (output_bytes > transient_.size || output_data == nullptr) {
+        if (!lazy_output_storage_ || lazy_output_storage_->capacity() < output_bytes) {
+            lazy_output_storage_ = std::make_unique<DeviceArena>(output_bytes);
+        }
+        output_data = lazy_output_storage_->base();
     }
     Tensor output(
-        transient_.data, DType::BF16,
+        output_data, DType::BF16,
         {VisionScheduleConfig::out_hidden, static_cast<std::int32_t>(control.merged_count)});
 
     if (!active_item_ || *active_item_ != active->item_index) {

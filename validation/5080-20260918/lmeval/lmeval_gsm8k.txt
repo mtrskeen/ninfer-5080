@@ -1,0 +1,85 @@
+2026-09-18:19:38:27 WARNING  [config.evaluate_config:337] --limit SHOULD ONLY BE USED FOR TESTING. REAL METRICS SHOULD NOT BE COMPUTED USING LIMIT.
+2026-09-18:19:38:27 INFO     [config.evaluate_config:357] Using default fewshot_as_multiturn=True.
+2026-09-18:19:38:30 INFO     [_cli.run:392] Selected Tasks: ['gsm8k_cot']
+2026-09-18:19:38:30 INFO     [evaluator:214] Setting random seed to 0 | Setting numpy seed to 1234 | Setting torch manual seed to 1234 | Setting fewshot manual seed to 1234
+2026-09-18:19:38:30 WARNING  [evaluator:226] generation_kwargs: {'max_gen_toks': 512} specified through cli, these settings will update set parameters in yaml tasks. Ensure 'do_sample=True' for non-greedy decoding!
+2026-09-18:19:38:30 INFO     [evaluator:239] Initializing openai-chat-completions model, with arguments: {'model': 'qwen3.8-27b-16gb', 'base_url': 'http://127.0.0.1:18199/v1/chat/completions', 'tokenizer': '/validate/qwen38_tokenizer', 'num_concurrent': 1, 'max_retries': 2, 'timeout': 3600}
+2026-09-18:19:38:30 INFO     [models.api_models:176] Using max length 2048 - 1
+2026-09-18:19:38:30 INFO     [models.api_models:179] Concurrent requests are disabled. To enable concurrent requests, set `num_concurrent` > 1.
+2026-09-18:19:38:30 INFO     [models.api_models:197] Using tokenizer None
+Warning: You are sending unauthenticated requests to the HF Hub. Please set a HF_TOKEN to enable higher rate limits and faster downloads.
+2026-09-18:19:38:33 INFO     [evaluator_utils:472] Selected tasks:
+2026-09-18:19:38:33 INFO     [evaluator_utils:506] Task: gsm8k_cot (gsm8k/gsm8k-cot.yaml)
+2026-09-18:19:38:33 INFO     [evaluator:314] gsm8k_cot: Using gen_kwargs: {'do_sample': False, 'until': ['Q:', '</s>', '<|im_end|>'], 'max_gen_toks': 512}
+2026-09-18:19:38:33 INFO     [api.task:312] Building contexts for gsm8k_cot on rank 0...
+
+  0%|          | 0/50 [00:00<?, ?it/s]
+ 26%|██▌       | 13/50 [00:00<00:00, 125.21it/s]
+ 54%|█████▍    | 27/50 [00:00<00:00, 130.34it/s]
+ 82%|████████▏ | 41/50 [00:00<00:00, 133.79it/s]
+100%|██████████| 50/50 [00:00<00:00, 134.96it/s]
+2026-09-18:19:38:33 INFO     [evaluator:589] Running generate_until requests
+2026-09-18:19:38:33 INFO     [models.api_models:752] Tokenized requests are disabled. Context + generation length is not checked.
+
+Requesting API:   0%|          | 0/50 [00:00<?, ?it/s]2026-09-18:19:38:33 WARNING  [models.api_models:375] Cannot determine EOS string to pass to stop sequence. Manually set by passing `eos_string` to model_args.
+
+Requesting API:   2%|▏         | 1/50 [00:01<01:03,  1.30s/it]
+Requesting API:   4%|▍         | 2/50 [00:02<00:52,  1.10s/it]
+Requesting API:   6%|▌         | 3/50 [00:04<01:07,  1.45s/it]
+Requesting API:   8%|▊         | 4/50 [00:05<01:01,  1.34s/it]
+Requesting API:  10%|█         | 5/50 [00:06<01:03,  1.42s/it]
+Requesting API:  12%|█▏        | 6/50 [00:08<01:00,  1.38s/it]
+Requesting API:  14%|█▍        | 7/50 [00:09<00:56,  1.32s/it]
+Requesting API:  16%|█▌        | 8/50 [00:11<01:06,  1.57s/it]
+Requesting API:  18%|█▊        | 9/50 [00:14<01:17,  1.89s/it]
+Requesting API:  20%|██        | 10/50 [00:15<01:09,  1.74s/it]
+Requesting API:  22%|██▏       | 11/50 [00:17<01:09,  1.77s/it]
+Requesting API:  24%|██▍       | 12/50 [00:18<01:03,  1.67s/it]
+Requesting API:  26%|██▌       | 13/50 [00:20<01:07,  1.83s/it]
+Requesting API:  28%|██▊       | 14/50 [00:24<01:22,  2.28s/it]
+Requesting API:  30%|███       | 15/50 [00:25<01:12,  2.08s/it]
+Requesting API:  32%|███▏      | 16/50 [00:28<01:15,  2.22s/it]
+Requesting API:  34%|███▍      | 17/50 [00:29<01:00,  1.85s/it]
+Requesting API:  36%|███▌      | 18/50 [00:31<01:00,  1.89s/it]
+Requesting API:  38%|███▊      | 19/50 [00:32<00:51,  1.67s/it]
+Requesting API:  40%|████      | 20/50 [00:34<00:51,  1.70s/it]
+Requesting API:  42%|████▏     | 21/50 [00:37<01:00,  2.07s/it]
+Requesting API:  44%|████▍     | 22/50 [00:38<00:50,  1.79s/it]
+Requesting API:  46%|████▌     | 23/50 [00:39<00:43,  1.60s/it]
+Requesting API:  48%|████▊     | 24/50 [00:40<00:36,  1.42s/it]
+Requesting API:  50%|█████     | 25/50 [00:41<00:35,  1.42s/it]
+Requesting API:  52%|█████▏    | 26/50 [00:43<00:37,  1.56s/it]
+Requesting API:  54%|█████▍    | 27/50 [00:45<00:34,  1.51s/it]
+Requesting API:  56%|█████▌    | 28/50 [00:46<00:30,  1.40s/it]
+Requesting API:  58%|█████▊    | 29/50 [00:47<00:28,  1.37s/it]
+Requesting API:  60%|██████    | 30/50 [00:48<00:26,  1.32s/it]
+Requesting API:  62%|██████▏   | 31/50 [00:50<00:27,  1.43s/it]
+Requesting API:  64%|██████▍   | 32/50 [00:52<00:28,  1.56s/it]
+Requesting API:  66%|██████▌   | 33/50 [00:53<00:23,  1.40s/it]
+Requesting API:  68%|██████▊   | 34/50 [00:55<00:24,  1.53s/it]
+Requesting API:  70%|███████   | 35/50 [00:56<00:21,  1.43s/it]
+Requesting API:  72%|███████▏  | 36/50 [00:57<00:19,  1.38s/it]
+Requesting API:  74%|███████▍  | 37/50 [00:59<00:18,  1.40s/it]
+Requesting API:  76%|███████▌  | 38/50 [01:03<00:27,  2.26s/it]
+Requesting API:  78%|███████▊  | 39/50 [01:04<00:21,  1.99s/it]
+Requesting API:  80%|████████  | 40/50 [01:07<00:21,  2.16s/it]
+Requesting API:  82%|████████▏ | 41/50 [01:08<00:16,  1.84s/it]
+Requesting API:  84%|████████▍ | 42/50 [01:09<00:13,  1.74s/it]
+Requesting API:  86%|████████▌ | 43/50 [01:11<00:10,  1.56s/it]
+Requesting API:  88%|████████▊ | 44/50 [01:13<00:11,  1.84s/it]
+Requesting API:  90%|█████████ | 45/50 [01:15<00:08,  1.73s/it]
+Requesting API:  92%|█████████▏| 46/50 [01:16<00:06,  1.69s/it]
+Requesting API:  94%|█████████▍| 47/50 [01:18<00:05,  1.80s/it]
+Requesting API:  96%|█████████▌| 48/50 [01:21<00:04,  2.01s/it]
+Requesting API:  98%|█████████▊| 49/50 [01:22<00:01,  1.76s/it]
+Requesting API: 100%|██████████| 50/50 [01:23<00:00,  1.64s/it]
+Requesting API: 100%|██████████| 50/50 [01:23<00:00,  1.68s/it]
+fatal: not a git repository (or any of the parent directories): .git
+[transformers] PyTorch was not found. Models won't be available and only tokenizers, configuration and file/data utilities can be used.
+2026-09-18:19:39:57 INFO     [loggers.evaluation_tracker:247] Saving results aggregated
+openai-chat-completions ({'model': 'qwen3.8-27b-16gb', 'base_url': 'http://127.0.0.1:18199/v1/chat/completions', 'tokenizer': '/validate/qwen38_tokenizer', 'num_concurrent': 1, 'max_retries': 2, 'timeout': 3600}), gen_kwargs: ({'max_gen_toks': 512}), limit: 50.0, num_fewshot: None, batch_size: 1
+|  Tasks  |Version|     Filter     |n-shot|  Metric   |   |Value|   |Stderr|
+|---------|------:|----------------|-----:|-----------|---|----:|---|-----:|
+|gsm8k_cot|      3|flexible-extract|     8|exact_match|↑  | 0.96|±  | 0.028|
+|         |       |strict-match    |     8|exact_match|↑  | 0.96|±  | 0.028|
+

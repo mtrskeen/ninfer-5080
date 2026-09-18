@@ -1,0 +1,402 @@
+# BF16 Row‑wise L2 Normalization on sm_120a (CUDA 13.1 / C++20)
+
+Below is a complete, runnable implementation. It uses `__nv_bfloat16` (available in CUDA 13.x), PTX intrinsics for the sm_120a target, and a numerically stable FP32 reference computed with Kahan summation. The kernel processes rows in parallel using vectorized loads/stores and per‑thread partial reductions that are combined via shared memory.
+
+```cpp
+// bf16_row_norm.cu
+// Complete CUDA 13.1 / C++20 program: row-wise L2 normalization of a large BF16 matrix
+// Target architecture: sm_120a (Blackwell-class GPU)
+// Build: cmake -B build && cmake --build build && ./bf16_row_norm [options]
+
+#include <cuda_runtime.h>
+#include <cuda_bf16.h>   // __nv_bfloat16, __nv_bfloat162 from CUDA 13+
+#include <cstdio>
+#include <cstdlib>
+#include <cstring>
+#include <cmath>
+#include <cstdint>
+#include <vector>
+#include <algorithm>
+#include <numeric>
+#include <limits>
+#include <chrono>
+#include <random>
+#include <string>
+#include <memory>
+#include <stdexcept>
+#include <optional>
+#include <span>
+
+// ---------------------------------------------------------------------------
+// Constants
+// ---------------------------------------------------------------------------
+
+constexpr int WARP_SIZE = 32;
+constexpr int BLOCK_SIZE = 256;          // threads per block
+constexpr int THREADS_PER_ROW = 8;       // each thread handles 4 consecutive elements (16 bytes = one float4-equivalent)
+constexpr int ELEM_PER_THREAD = 4;       // number of BF16 elements per thread (packed as two __nv_bfloat162)
+constexpr int ROWS_PER_BLOCK = BLOCK_SIZE / THREADS_PER_ROW;  // 32 rows processed per block
+constexpr size_t MAX_MATRIX_ELEMENTS = 1ULL << 30;  // safety cap ~ 1 GiB of BF16 data
+
+// Tolerance for verification (relative + absolute)
+constexpr float REL_TOL = 1e-3f;
+constexpr float ABS_TOL = 1e-4f;
+
+// ---------------------------------------------------------------------------
+// RAII Device Buffer
+// ---------------------------------------------------------------------------
+
+struct DeviceBuffer {
+    void* ptr = nullptr;
+    size_t bytes = 0;
+
+    DeviceBuffer() = default;
+
+    explicit DeviceBuffer(size_t _bytes) : bytes(_bytes) {
+        if (bytes == 0) return;
+        cudaError_t err = cudaMalloc(&ptr, bytes);
+        if (err != cudaSuccess) {
+            throw std::runtime_error(std::string("cudaMalloc failed: ") + cudaGetErrorString(err));
+        }
+    }
+
+    DeviceBuffer(const DeviceBuffer&) = delete;
+    DeviceBuffer& operator=(const DeviceBuffer&) = delete;
+
+    DeviceBuffer(DeviceBuffer&& other) noexcept : ptr(other.ptr), bytes(other.bytes) {
+        other.ptr = nullptr;
+        other.bytes = 0;
+    }
+
+    DeviceBuffer& operator=(DeviceBuffer&& other) noexcept {
+        if (this != &other) {
+            release();
+            ptr = other.ptr;
+            bytes = other.bytes;
+            other.ptr = nullptr;
+            other.bytes = 0;
+        }
+        return *this;
+    }
+
+    ~DeviceBuffer() { release(); }
+
+    void* get() const { return ptr; }
+    size_t size() const { return bytes; }
+
+    void reset(size_t new_bytes) {
+        release();
+        bytes = new_bytes;
+        if (bytes > 0) {
+            cudaError_t err = cudaMalloc(&ptr, bytes);
+            if (err != cudaSuccess) {
+                throw std::runtime_error(std::string("cudaMalloc failed: ") + cudaGetErrorString(err));
+            }
+        }
+    }
+
+private:
+    void release() {
+        if (ptr) {
+            cudaFree(ptr);
+            ptr = nullptr;
+        }
+        bytes = 0;
+    }
+};
+
+// ---------------------------------------------------------------------------
+// Error-checking macro
+// ---------------------------------------------------------------------------
+
+#define CUDA_CHECK(call)                                                     \
+    do {                                                                     \
+        cudaError_t _err = (call);                                          \
+        if (_err != cudaSuccess) {                                          \
+            fprintf(stderr, "CUDA error at %s:%d: %s\n",                   \
+                    __FILE__, __LINE__, cudaGetErrorString(_err));          \
+            exit(EXIT_FAILURE);                                             \
+        }                                                                    \
+    } while (0)
+
+#define CU_CHECK(call)                                                       \
+    do {                                                                     \
+        CUresult _err = (call);                                             \
+        if (_err != CUDA_SUCCESS) {                                         \
+            const char* _str = nullptr;                                     \
+            cuGetErrorString(_err, &_str);                                  \
+            fprintf(stderr, "cuDriver error at %s:%d: %s\n",               \
+                    __FILE__, __LINE__, _str ? _str : "unknown");           \
+            exit(EXIT_FAILURE);                                             \
+        }                                                                    \
+    } while (0)
+
+// ---------------------------------------------------------------------------
+// Argument Parsing
+// ---------------------------------------------------------------------------
+
+struct Options {
+    int num_rows = 1 << 18;         // 262144 rows
+    int num_cols = 1 << 14;         // 16384 columns
+    int warmup_iters = 10;
+    int timing_iters = 100;
+    uint32_t seed = 42;
+    bool verify = true;
+    bool print_config = false;
+    std::string help_text;
+};
+
+void print_usage(const char* prog) {
+    printf(
+        "Usage: %s [options]\n"
+        "\n"
+        "Options:\n"
+        "  --rows N         Number of rows (default: 262144)\n"
+        "  --cols N         Number of columns (default: 16384)\n"
+        "  --warmup N       Warm-up iterations (default: 10)\n"
+        "  --iters N        Timing iterations (default: 100)\n"
+        "  --seed N         RNG seed (default: 42)\n"
+        "  --no-verify      Disable tolerance-based verification\n"
+        "  --config         Print device configuration before running\n"
+        "  --help           Show this message\n"
+        "\n"
+        "Example:\n"
+        "  %s --rows 1048576 --cols 32768 --iters 200 --seed 123\n"
+        "\n",
+        prog, prog
+    );
+}
+
+bool parse_args(int argc, char** argv, Options& opts) {
+    for (int i = 1; i < argc; ++i) {
+        std::string arg = argv[i];
+        try {
+            if (arg == "--help" || arg == "-h") {
+                print_usage(argv[0]);
+                return false;
+            } else if (arg == "--rows") {
+                if (i + 1 >= argc) throw std::runtime_error("--rows requires a value");
+                opts.num_rows = std::stoi(argv[++i]);
+            } else if (arg == "--cols") {
+                if (i + 1 >= argc) throw std::runtime_error("--cols requires a value");
+                opts.num_cols = std::stoi(argv[++i]);
+            } else if (arg == "--warmup") {
+                if (i + 1 >= argc) throw std::runtime_error("--warmup requires a value");
+                opts.warmup_iters = std::stoi(argv[++i]);
+            } else if (arg == "--iters") {
+                if (i + 1 >= argc) throw std::runtime_error("--iters requires a value");
+                opts.timing_iters = std::stoi(argv[++i]);
+            } else if (arg == "--seed") {
+                if (i + 1 >= argc) throw std::runtime_error("--seed requires a value");
+                opts.seed = static_cast<uint32_t>(std::stoul(argv[++i]));
+            } else if (arg == "--no-verify") {
+                opts.verify = false;
+            } else if (arg == "--config") {
+                opts.print_config = true;
+            } else {
+                fprintf(stderr, "Unknown option: %s\n", arg.c_str());
+                print_usage(argv[0]);
+                return false;
+            }
+        } catch (const std::exception& e) {
+            fprintf(stderr, "Error parsing '%s': %s\n", arg.c_str(), e.what());
+            print_usage(argv[0]);
+            return false;
+        }
+    }
+
+    // Validate
+    if (opts.num_rows <= 0 || opts.num_cols <= 0) {
+        fprintf(stderr, "Rows and columns must be positive.\n");
+        return false;
+    }
+    if (static_cast<size_t>(opts.num_rows) * static_cast<size_t>(opts.num_cols) > MAX_MATRIX_ELEMENTS) {
+        fprintf(stderr, "Matrix too large (%zu x %zu). Maximum supported: %zu elements.\n",
+                opts.num_rows, opts.num_cols, MAX_MATRIX_ELEMENTS);
+        return false;
+    }
+    if (opts.num_cols % ELEM_PER_THREAD != 0) {
+        fprintf(stderr, "Number of columns must be a multiple of %d (got %d).\n",
+                ELEM_PER_THREAD, opts.num_cols);
+        return false;
+    }
+    if (opts.warmup_iters < 0 || opts.timing_iters < 1) {
+        fprintf(stderr, "Warm-up must be >= 0 and timing iters must be >= 1.\n");
+        return false;
+    }
+
+    return true;
+}
+
+// ---------------------------------------------------------------------------
+// Deterministic Input Generation (host-side, then copied to device)
+// ---------------------------------------------------------------------------
+
+// Generate deterministic pseudo-random BF16 values in [-1, 1] using a simple
+// xorshift128+ PRNG seeded deterministically. We generate into a host buffer
+// of floats, convert to BF16, then copy to device. This ensures reproducibility.
+
+struct XorShift128Plus {
+    uint64_t s0, s1;
+
+    explicit XorShift128Plus(uint64_t seed) {
+        // Initialize state from seed using a splitmix64-like expansion
+        s0 = seed | 1;  // ensure odd
+        s1 = seed ^ 0x9E3779B97F4A7C15ULL;
+        // A few rounds to mix
+        for (int i = 0; i < 10; ++i) next();
+    }
+
+    uint64_t next() {
+        uint64_t x = s0;
+        uint64_t y = s1;
+        s0 = y;
+        x ^= x << 23;
+        x ^= x >> 17;
+        x ^= y;
+        x ^= y >> 26;
+        s1 = x;
+        return x + y;
+    }
+
+    // Uniform float in [0, 1)
+    float uniform() {
+        uint64_t r = next();
+        // Use top 24 bits for good distribution
+        uint32_t mantissa = static_cast<uint32_t>(r >> 40);
+        // Map to [0, 1): 1.0f * (mantissa / 2^24)
+        return static_cast<float>(mantissa) * (1.0f / 16777216.0f);
+    }
+
+    // Uniform float in [-1, 1)
+    float uniform_symmetric() {
+        return uniform() * 2.0f - 1.0f;
+    }
+};
+
+// Convert float to __nv_bfloat16
+inline __nv_bfloat16 f2bf(float f) {
+    return __float_to_bfloat16(f);
+}
+
+// Convert __nv_bfloat16 to float
+inline float bf2f(__nv_bfloat16 b) {
+    return __bfloat16_as_float(b);
+}
+
+// Generate the input matrix on host
+std::vector<__nv_bfloat16> generate_input(int num_rows, int num_cols, uint32_t seed) {
+    size_t total = static_cast<size_t>(num_rows) * static_cast<size_t>(num_cols);
+    std::vector<__nv_bfloat16> data(total);
+
+    XorShift128Plus rng(seed);
+
+    for (size_t i = 0; i < total; ++i) {
+        float val = rng.uniform_symmetric();
+        data[i] = f2bf(val);
+    }
+
+    return data;
+}
+
+// ---------------------------------------------------------------------------
+// Numerically Stable FP32 Reference (Kahan Summation)
+// ---------------------------------------------------------------------------
+
+// Compute row-wise L2 norm using Kahan summation in FP32 for maximum accuracy.
+// Returns normalized rows (each row divided by its L2 norm).
+// If a row's norm is zero or denormal, the row remains unchanged (or set to zero).
+
+std::vector<__nv_bfloat16> compute_fp32_reference(
+    const std::vector<__nv_bfloat16>& input,
+    int num_rows,
+    int num_cols)
+{
+    size_t total = static_cast<size_t>(num_rows) * static_cast<size_t>(num_cols);
+    std::vector<__nv_bfloat16> output(total);
+
+    for (int r = 0; r < num_rows; ++r) {
+        const __nv_bfloat16* row_ptr = &input[static_cast<size_t>(r) * num_cols];
+
+        // Kahan compensated summation for sum-of-squares
+        float sum = 0.0f;
+        float c = 0.0f;  // compensation term
+
+        for (int c_idx = 0; c_idx < num_cols; ++c_idx) {
+            float val = bf2f(row_ptr[c_idx]);
+            float v2 = val * val;
+            float y = v2 - c;
+            float t = sum + y;
+            c = (t - sum) - y;
+            sum = t;
+        }
+
+        float norm = std::sqrt(sum);
+
+        // Handle degenerate cases
+        if (!std::isfinite(norm) || norm < 1e-30f) {
+            // Zero or invalid norm: output zeros
+            for (int c_idx = 0; c_idx < num_cols; ++c_idx) {
+                output[static_cast<size_t>(r) * num_cols + c_idx] = f2bf(0.0f);
+            }
+        } else {
+            float inv_norm = 1.0f / norm;
+            for (int c_idx = 0; c_idx < num_cols; ++c_idx) {
+                float val = bf2f(row_ptr[c_idx]);
+                output[static_cast<size_t>(r) * num_cols + c_idx] = f2bf(val * inv_norm);
+            }
+        }
+    }
+
+    return output;
+}
+
+// ---------------------------------------------------------------------------
+// CUDA Kernel: Vectorized Row-wise L2 Normalization
+// ---------------------------------------------------------------------------
+
+// Memory layout:
+//   Matrix stored in row-major order as a flat array of __nv_bfloat16.
+//   Each row has `num_cols` elements.
+//   num_cols must be a multiple of ELEM_PER_THREAD (4).
+//
+// Launch geometry:
+//   gridDim.x  = ceil(num_rows / ROWS_PER_BLOCK)
+//   blockDim.x = BLOCK_SIZE (256 threads)
+//   Each block processes ROWS_PER_BLOCK (32) rows.
+//   Within a block, threads are grouped into groups of THREADS_PER_ROW (8).
+//   Thread group g (0..ROWS_PER_BLOCK-1) processes row (blockIdx.x * ROWS_PER_BLOCK + g).
+//   Within a group, thread j (0..THREADS_PER_ROW-1) loads ELEM_PER_THREAD (4) consecutive
+//   BF16 elements starting at column offset j * ELEM_PER_THREAD.
+//   So thread j covers columns [j*4, j*4+4).
+//
+// Reduction within a row:
+//   Step 1: Each thread computes local sum-of-squares over its 4 elements (in FP32).
+//   Step 2: Warp-level reduction across all threads in the warp (using shfl_down_sync).
+//           Since THREADS_PER_ROW=8 and WARP_SIZE=32, exactly 4 thread-groups fit in one warp.
+//           We reduce within each 8-thread subgroup using shuffle masks.
+//   Step 3: After intra-group reduction, the first thread of each group holds the row's
+//           sum-of-squares. We write it to shared memory indexed by group_id.
+//   Step 4: All threads in the block synchronize, then each thread reads the sum-of-squares
+//           for its assigned row from shared memory, computes sqrt, and divides its 4 elements.
+//
+// Vectorization:
+//   We load 4 BF16 elements as two __nv_bfloat162 structs (8 bytes each), which together
+//   form a 16-byte aligned access. On sm_120a, we use 128-bit loads via reinterpretation
+//   to achieve full bandwidth utilization.
+
+__global__ void bf16_row_normalize_kernel(
+    const __nv_bfloat16* __restrict__ input,
+    __nv_bfloat16* __restrict__ output,
+    int num_rows,
+    int num_cols,
+    int rows_per_block,
+    int threads_per_row)
+{
+    // Shared memory: one float per row-in-block for the reduced sum-of-squares
+    extern __shared__ float s_sum_sq[];
+
+    const int tid = threadIdx.x;
+    const int gid = blockIdx.x;  // global block index
+
+    // Determine which row this thread

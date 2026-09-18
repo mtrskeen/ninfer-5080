@@ -1,0 +1,148 @@
+Let Patrick’s walking speed be \(p\) miles per hour.  
+Let \(T\) be the total time, in hours, from Patrick’s start until all three arrive at the park.
+
+Then:
+
+- Patrick’s travel time is \(T\), so the distance is
+  \[
+  D = pT.
+  \]
+
+- Tanya left 1 hour later, so her travel time is \(T-1\). Her speed is \(p+2\), so
+  \[
+  D = (p+2)(T-1).
+  \]
+
+- Jose left 2 hours after Patrick, so his travel time is \(T-2\). His speed is \(p+9\), so
+  \[
+  D = (p+9)(T-2).
+  \]
+
+Set the first two expressions for \(D\) equal:
+
+\[
+pT = (p+2)(T-1)
+\]
+
+\[
+pT = pT + 2T - p - 2
+\]
+
+\[
+0 = 2T - p - 2
+\]
+
+\[
+p = 2T - 2.
+\]
+
+Now set the first and third expressions for \(D\) equal:
+
+\[
+pT = (p+9)(T-2)
+\]
+
+\[
+pT = pT + 9T - 2p - 18
+\]
+
+\[
+0 = 9T - 2p - 18
+\]
+
+\[
+2p = 9T - 18
+\]
+
+\[
+p = \frac{9T-18}{2}.
+\]
+
+Now equate the two expressions for \(p\):
+
+\[
+2T - 2 = \frac{9T-18}{2}
+\]
+
+Multiply by 2:
+
+\[
+4T - 4 = 9T - 18
+\]
+
+\[
+14 = 5T
+\]
+
+\[
+T = \frac{14}{5}.
+\]
+
+Now find Patrick’s speed:
+
+\[
+p = 2\left(\frac{14}{5}\right) - 2
+\]
+
+\[
+p = \frac{28}{5} - \frac{10}{5}
+\]
+
+\[
+p = \frac{18}{5}.
+\]
+
+The distance is
+
+\[
+D = pT = \frac{18}{5}\cdot \frac{14}{5} = \frac{252}{25}.
+\]
+
+Thus \(m=252\) and \(n=25\), so
+
+\[
+m+n = 252+25 = 277.
+\]
+
+\[
+\boxed{277}
+\]
+<<<REASONING>>>
+We need solve math problem step by step. Need provide final answer boxed. Let's analyze thoroughly.
+
+Problem: Patrick starts at constant rate from school to park. Tanya starts 1 hour later, running at Patrick + 2 mph. Jose starts 1 hour after Tanya (so 2 hours after Patrick) bicycling at Tanya + 7 mph = Patrick + 9 mph. All three arrive at same time. Distance = m/n, m,n coprime. Find m+n.
+
+Let Patrick speed = p mph (positive). Tanya speed = p+2. Jose speed = p+9.
+Let distance D miles. Let total time from Patrick start to arrival for all = T hours (for Patrick). Then Patrick time = T = D/p.
+Tanya started 1 hour after Patrick, so her travel time = T - 1 = D/(p+2). (Assuming T>1)
+Jose started 2 hours after Patrick, travel time = T - 2 = D/(p+9).
+All arrive same time.
+Equations:
+D = p T = (p+2)(T-1) = (p+9)(T-2).
+Need solve for D rational.
+Let's solve.
+From first and second: p T = (p+2)(T-1) = pT + 2T - p - 2. Cancel pT: 0 = 2T - p - 2 => p = 2T - 2.
+From first and third: p T = (p+9)(T-2) = pT + 9T - 2p - 18. Cancel: 0 = 9T - 2p - 18 => 2p = 9T - 18 => p = (9T -18)/2.
+Set equal: 2T - 2 = (9T - 18)/2 -> multiply 2: 4T - 4 = 9T -18 -> 14 = 5T -> T = 14/5 = 2.8. Then p = 2*(14/5)-2 = 28/5 - 10/5 = 18/5 = 3.6. D = p T = (18/5)*(14/5) = 252/25 = 10.08. m+n = 252+25=277.
+Check Tanya time T-1 = 9/5 hours, speed 18/5+2=28/5, distance = 28/5 * 9/5 = 252/25. Jose time T-2 = 4/5 hours, speed 18/5+9 = 63/5, distance = 252/25. Good.
+Need step-by-step. Could also set variables for times. Ensure m,n relatively prime: 252 and 25 gcd? 252 mod 25=2, gcd 1. answer 277.
+Need maybe mention positive and feasible: Patrick speed 18/5 >0; T=14/5 >2 so times positive.
+Need final with boxed. Ensure no hidden trick: "One hour after Patrick left, Tanya started running... One hour after Tanya left, Jose started" yes. "Tanya ran at constant rate of 2 mph faster than Patrick walked, Jose bicycled at constant rate of 7 mph faster than Tanya ran" yes. All arrived same time. Distance m/n. We have unique.
+Need maybe provide a robust derivation. Let's consider if there could be other interpretation: Patrick rate unknown, Tanya 2 mph faster, Jose 7 faster than Tanya. They started at times 0,1,2. Same arrival. Equation times = distance/speed. We solved.
+Need final answer concise but step-by-step.
+
+Potential concern: If T < 2 then Jose time negative? But solution T=2.8 positive; OK. We can state.
+
+Let's craft final: Let x be Patrick's speed mph. Let T be time Patrick takes, also time from his start to common arrival. Then distances:
+Patrick: xT.
+Tanya: (x+2)(T-1).
+Jose: (x+9)(T-2).
+Since same distance:
+xT = (x+2)(T-1) -> x=2T-2.
+xT = (x+9)(T-2) -> x=(9T-18)/2.
+Equate: 2T-2 = (9T-18)/2 -> 4T-4=9T-18 -> 5T=14 -> T=14/5.
+x=18/5.
+Distance = xT = (18/5)(14/5)=252/25. Thus m=252, n=25, m+n=277.
+Box.
+
+Need ensure final only? User asks solve step by step. Put answer inside boxed. We'll include.

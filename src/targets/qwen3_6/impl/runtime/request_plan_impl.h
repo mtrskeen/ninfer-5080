@@ -143,9 +143,7 @@ ProgramImplCore::plan_request_base(const PreparedPromptData& prompt,
             if (end > base->summary.prompt_tokens) {
                 throw std::invalid_argument("vision item consumer span exceeds prompt");
             }
-            if (schedule::VisionContext::workspace_bytes(item) > work.capacity()) {
-                throw std::invalid_argument("vision item exceeds the Program workspace envelope");
-            }
+            // Fork: vision item workspace is allocated lazily if it exceeds work.capacity()
             previous_end = end;
             max_merged   = std::max(max_merged, item.merged_count);
         }

@@ -1,0 +1,281 @@
+BEGIN;
+
+-- 1. Schema Definitions
+CREATE TABLE IF NOT EXISTS models (
+    model_id SERIAL PRIMARY KEY,
+    name VARCHAR(255) NOT NULL UNIQUE,
+    architecture VARCHAR(100) NOT NULL CHECK (architecture IN ('Llama', 'Mistral', 'GPT', 'Qwen')),
+    parameter_count BIGINT CHECK (parameter_count > 0),
+    context_length INT CHECK (context_length > 0),
+    created_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP
+);
+
+CREATE TABLE IF NOT EXISTS fixtures (
+    fixture_id SERIAL PRIMARY KEY,
+    kind VARCHAR(50) NOT NULL CHECK (kind IN ('short_prompt', 'long_context', 'code_gen', 'multi_turn')),
+    description TEXT,
+    token_count INT CHECK (token_count > 0),
+    difficulty_score NUMERIC(3,2) CHECK (difficulty_score BETWEEN 0 AND 1)
+);
+
+CREATE TABLE IF NOT EXISTS runs (
+    run_id SERIAL PRIMARY KEY,
+    model_id INT NOT NULL REFERENCES models(model_id),
+    fixture_id INT NOT NULL REFERENCES fixtures(fixture_id),
+    started_at TIMESTAMP NOT NULL,
+    finished_at TIMESTAMP,
+    status VARCHAR(20) CHECK (status IN ('completed', 'failed', 'timeout')),
+    latency_ms FLOAT CHECK (latency_ms >= 0),
+    tokens_generated INT CHECK (tokens_generated >= 0),
+    mtp_acceptance_rate NUMERIC(4,3) CHECK (mtp_acceptance_rate BETWEEN 0 AND 1),
+    retention_score NUMERIC(3,2) CHECK (retention_score BETWEEN 0 AND 1)
+);
+
+CREATE TABLE IF NOT EXISTS request_metrics (
+    metric_id SERIAL PRIMARY KEY,
+    run_id INT NOT NULL REFERENCES runs(run_id),
+    timestamp TIMESTAMP NOT NULL,
+    input_tokens INT CHECK (input_tokens >= 0),
+    output_tokens INT CHECK (output_tokens >= 0),
+    cache_hit_ratio NUMERIC(3,3) CHECK (cache_hit_ratio BETWEEN 0 AND 1),
+    kv_cache_size_mb FLOAT CHECK (kv_cache_size_mb >= 0)
+);
+
+-- 2. Indexes
+CREATE INDEX IF NOT EXISTS idx_runs_model ON runs(model_id);
+CREATE INDEX IF NOT EXISTS idx_runs_fixture ON runs(fixture_id);
+CREATE INDEX IF NOT EXISTS idx_runs_status ON runs(status);
+CREATE INDEX IF NOT EXISTS idx_metrics_run ON request_metrics(run_id);
+CREATE INDEX IF NOT EXISTS idx_metrics_timestamp ON request_metrics(timestamp);
+
+-- 3. Views
+CREATE OR REPLACE VIEW v_throughput_summary AS
+SELECT 
+    m.name AS model_name,
+    f.kind AS fixture_kind,
+    COUNT(r.run_id) AS total_runs,
+    AVG(r.tokens_generated / (r.latency_ms / 1000.0)) AS avg_tokens_per_sec,
+    MAX(r.tokens_generated / (r.latency_ms / 1000.0)) AS max_tokens_per_sec
+FROM runs r
+JOIN models m ON r.model_id = m.model_id
+JOIN fixtures f ON r.fixture_id = f.fixture_id
+WHERE r.status = 'completed'
+GROUP BY m.name, f.kind;
+
+CREATE OR REPLACE VIEW v_retention_analysis AS
+SELECT 
+    m.name AS model_name,
+    f.kind AS fixture_kind,
+    f.token_count AS input_token_count,
+    AVG(r.retention_score) AS avg_retention,
+    STDDEV_POP(r.retention_score) AS retention_stddev,
+    MIN(r.retention_score) AS min_retention,
+    MAX(r.retention_score) AS max_retention
+FROM runs r
+JOIN models m ON r.model_id = m.model_id
+JOIN fixtures f ON r.fixture_id = f.fixture_id
+WHERE r.status = 'completed'
+GROUP BY m.name, f.kind, f.token_count;
+
+-- 4. Upsert Function
+CREATE OR REPLACE FUNCTION upsert_run_metric(
+    p_run_id INT,
+    p_timestamp TIMESTAMP,
+    p_input_tokens INT,
+    p_output_tokens INT,
+    p_cache_hit_ratio NUMERIC,
+    p_kv_cache_size_mb FLOAT
+) RETURNS VOID AS $$
+BEGIN
+    INSERT INTO request_metrics (run_id, timestamp, input_tokens, output_tokens, cache_hit_ratio, kv_cache_size_mb)
+    VALUES (p_run_id, p_timestamp, p_input_tokens, p_output_tokens, p_cache_hit_ratio, p_kv_cache_size_mb)
+    ON CONFLICT (run_id, timestamp) DO UPDATE SET
+        input_tokens = EXCLUDED.input_tokens,
+        output_tokens = EXCLUDED.output_tokens,
+        cache_hit_ratio = EXCLUDED.cache_hit_ratio,
+        kv_cache_size_mb = EXCLUDED.kv_cache_size_mb;
+END;
+$$ LANGUAGE plpgsql;
+
+-- 5. Data Insertion
+-- Models
+INSERT INTO models (name, architecture, parameter_count, context_length) VALUES
+('Llama-3-8B-Instruct', 'Llama', 8000000000, 8192),
+('Mistral-7B-v0.3', 'Mistral', 7000000000, 32768);
+
+-- Fixtures
+INSERT INTO fixtures (kind, description, token_count, difficulty_score) VALUES
+('short_prompt', 'Simple Q&A', 128, 0.20),
+('long_context', 'Document summarization', 4096, 0.85),
+('code_gen', 'Python function generation', 512, 0.60),
+('multi_turn', 'Conversational agent', 2048, 0.75);
+
+-- Runs and Metrics Generation
+-- We need 80 rows. Let's generate them programmatically in the script for brevity or explicit inserts.
+-- Explicit inserts are safer for "no markdown" strictness if we can't use loops easily in a single block without temp tables, but standard SQL allows CTEs.
+-- However, generating 80 distinct realistic rows with specific values is best done via a data generator approach within the transaction if allowed, or just listing them.
+-- Given the constraint "Return one PostgreSQL script", I will use a CTE-based generator to create the 80 rows efficiently to keep the script readable and strictly SQL.
+
+WITH generated_data AS (
+    SELECT 
+        g.n AS row_num,
+        CASE WHEN g.n % 2 = 0 THEN 1 ELSE 2 END AS model_id, -- Alternating models
+        ((g.n - 1) % 4) + 1 AS fixture_id, -- Cycling through 4 fixtures
+        NOW() - INTERVAL '1 day' + (g.n * INTERVAL '1 hour') AS start_time,
+        NOW() - INTERVAL '1 day' + (g.n * INTERVAL '1 hour') + INTERVAL '1 minute' AS end_time,
+        -- Status: mostly completed, some failed/timeout
+        CASE 
+            WHEN g.n % 10 = 0 THEN 'failed'
+            WHEN g.n % 15 = 0 THEN 'timeout'
+            ELSE 'completed'
+        END AS status,
+        -- Latency based on fixture complexity
+        CASE 
+            WHEN ((g.n - 1) % 4) + 1 = 1 THEN 150 + (g.n % 50)
+            WHEN ((g.n - 1) % 4) + 1 = 2 THEN 1200 + (g.n % 200)
+            WHEN ((g.n - 1) % 4) + 1 = 3 THEN 400 + (g.n % 100)
+            ELSE 800 + (g.n % 150)
+        END AS latency,
+        -- Tokens generated
+        CASE 
+            WHEN ((g.n - 1) % 4) + 1 = 1 THEN 50 + (g.n % 20)
+            WHEN ((g.n - 1) % 4) + 1 = 2 THEN 200 + (g.n % 100)
+            WHEN ((g.n - 1) % 4) + 1 = 3 THEN 150 + (g.n % 50)
+            ELSE 100 + (g.n % 30)
+        END AS tokens_gen,
+        -- MTP Acceptance Rate
+        0.5 + (g.n % 40) / 100.0,
+        -- Retention Score
+        0.4 + (g.n % 50) / 100.0
+    FROM generate_series(1, 80) AS g(n)
+)
+INSERT INTO runs (model_id, fixture_id, started_at, finished_at, status, latency_ms, tokens_generated, mtp_acceptance_rate, retention_score)
+SELECT 
+    gd.model_id,
+    gd.fixture_id,
+    gd.start_time,
+    CASE WHEN gd.status != 'completed' THEN NULL ELSE gd.end_time END,
+    gd.status,
+    gd.latency,
+    gd.tokens_gen,
+    gd.mtp_acceptance_rate,
+    gd.retention_score
+FROM generated_data gd;
+
+-- Generate corresponding request metrics for each run (1 metric per run for simplicity, or multiple?)
+-- The prompt asks for "request_metrics" table. Usually 1 row per run snapshot or per step.
+-- Let's assume 1 primary metric row per run for this dataset size to keep it manageable, or maybe 2 rows per run?
+-- "at least 80 realistic INSERT rows spanning two models and four fixture kinds" refers to the main data volume.
+-- I will insert 1 metric row per run to align with the 80 runs count, ensuring we have 80 rows in request_metrics as well.
+
+WITH run_ids AS (
+    SELECT run_id, model_id, fixture_id, status, latency_ms, tokens_generated
+    FROM runs
+)
+INSERT INTO request_metrics (run_id, timestamp, input_tokens, output_tokens, cache_hit_ratio, kv_cache_size_mb)
+SELECT 
+    r.run_id,
+    r.started_at,
+    -- Input tokens derived from fixture type approximation
+    CASE 
+        WHEN r.fixture_id = 1 THEN 128
+        WHEN r.fixture_id = 2 THEN 4096
+        WHEN r.fixture_id = 3 THEN 512
+        ELSE 2048
+    END,
+    r.tokens_generated,
+    -- Cache hit ratio
+    0.1 + (r.run_id % 50) / 100.0,
+    -- KV Cache Size estimation
+    (CASE 
+        WHEN r.fixture_id = 1 THEN 128
+        WHEN r.fixture_id = 2 THEN 4096
+        WHEN r.fixture_id = 3 THEN 512
+        ELSE 2048
+    END + r.tokens_generated) * 0.01
+FROM run_ids r;
+
+COMMIT;
+
+-- 6. Analytical Queries
+
+-- Query 1: Throughput by Model and Fixture Type
+SELECT 
+    model_name,
+    fixture_kind,
+    ROUND(AVG(avg_tokens_per_sec), 2) AS mean_throughput_tps,
+    ROUND(MAX(max_tokens_per_sec), 2) AS peak_throughput_tps,
+    COUNT(*) AS sample_count
+FROM v_throughput_summary
+GROUP BY model_name, fixture_kind
+ORDER BY model_name, fixture_kind;
+
+-- Query 2: Variability Analysis (Standard Deviation of Latency)
+SELECT 
+    m.name AS model_name,
+    f.kind AS fixture_kind,
+    ROUND(STDDEV_POP(r.latency_ms), 2) AS latency_stddev_ms,
+    ROUND(AVG(r.latency_ms), 2) AS latency_mean_ms,
+    ROUND(STDDEV_POP(r.latency_ms) / NULLIF(AVG(r.latency_ms), 0), 3) AS coefficient_of_variation
+FROM runs r
+JOIN models m ON r.model_id = m.model_id
+JOIN fixtures f ON r.fixture_id = f.fixture_id
+WHERE r.status = 'completed'
+GROUP BY m.name, f.kind
+ORDER BY m.name, f.kind;
+
+-- Query 3: Long-Context Retention Performance
+SELECT 
+    model_name,
+    fixture_kind,
+    input_token_count,
+    ROUND(avg_retention, 3) AS mean_retention,
+    ROUND(retention_stddev, 3) AS retention_volatility,
+    ROUND(min_retention, 3) AS worst_case_retention,
+    ROUND(max_retention, 3) AS best_case_retention
+FROM v_retention_analysis
+WHERE fixture_kind = 'long_context'
+ORDER BY model_name, input_token_count DESC;
+
+-- Query 4: Multi-Turn Conversation Consistency
+SELECT 
+    m.name AS model_name,
+    COUNT(DISTINCT r.run_id) AS multi_turn_sessions,
+    ROUND(AVG(r.retention_score), 3) AS avg_context_retention,
+    ROUND(AVG(r.mtp_acceptance_rate), 3) AS avg_mtp_acceptance,
+    SUM(CASE WHEN r.status = 'failed' THEN 1 ELSE 0 END) AS failure_count
+FROM runs r
+JOIN models m ON r.model_id = m.model_id
+JOIN fixtures f ON r.fixture_id = f.fixture_id
+WHERE f.kind = 'multi_turn'
+GROUP BY m.name
+ORDER BY m.name;
+
+-- Query 5: MTP Acceptance Rate Distribution by Model
+SELECT 
+    m.name AS model_name,
+    ROUND(AVG(r.mtp_acceptance_rate), 3) AS global_avg_acceptance,
+    PERCENTILE_CONT(0.5) WITHIN GROUP (ORDER BY r.mtp_acceptance_rate) AS median_acceptance,
+    PERCENTILE_CONT(0.95) WITHIN GROUP (ORDER BY r.mtp_acceptance_rate) AS p95_acceptance,
+    COUNT(*) AS total_runs
+FROM runs r
+JOIN models m ON r.model_id = m.model_id
+WHERE r.status = 'completed'
+GROUP BY m.name
+ORDER BY m.name;
+
+-- Query 6: Efficiency Metric (Tokens per Second vs Cache Hit Ratio Correlation)
+SELECT 
+    m.name AS model_name,
+    f.kind AS fixture_kind,
+    ROUND(AVG(rm.input_tokens + rm.output_tokens), 0) AS avg_total_tokens,
+    ROUND(AVG(rm.cache_hit_ratio), 3) AS avg_cache_hit,
+    ROUND(AVG((rm.output_tokens::FLOAT / (r.latency_ms / 1000.0))), 2) AS avg_gen_throughput,
+    CORR(rm.cache_hit_ratio, (rm.output_tokens::FLOAT / (r.latency_ms / 1000.0))) AS cache_throughput_corr
+FROM request_metrics rm
+JOIN runs r ON rm.run_id = r.run_id
+JOIN models m ON r.model_id = m.model_id
+JOIN fixtures f ON r.fixture_id = f.fixture_id
+WHERE r.status = 'completed'
+GROUP BY m.name, f.kind
+ORDER BY m.name, f.kind;

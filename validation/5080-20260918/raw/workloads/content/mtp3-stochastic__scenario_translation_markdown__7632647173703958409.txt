@@ -1,0 +1,43 @@
+# 发布流程
+
+发布负责人必须严格保留诸如 `request_id`、`max_context`、`kv_dtype` 和 `mtp_rounds` 等标识符。请将正文翻译为中文，但不得翻译代码、JSON 键名、命令行标志、文件名或表格中的值。
+
+| Phase | Required evidence | Failure action |
+|---|---|---|
+| prepare | fixture hash and prompt-token count | stop before generation |
+| warmup | one successful unmeasured request | restart the service |
+| measure | five sequential responses | invalidate the complete block |
+| publish | summary plus per-request rows | withhold the headline |
+
+```json
+{"model":"qwen3.6-35b-a3b","max_completion_tokens":1024,"seed":42,"stream":false}
+```
+
+## 注意事项
+
+操作员需检查前缀复用是否已禁用、缓存命中计数是否为零，以及是否有无关的 GPU 进程正在运行。自然停止的响应仍视为有效观测；因客户端断开连接而丢失的响应则不视为有效观测。报告区分服务器内部 TTFT 与网络观测时间，并说明首个生成的 token 被分配给 prefill 阶段。
+
+### 双语术语表 (Bilingual Glossary)
+
+1. **Release owner** - 发布负责人：负责执行发布流程并确保合规性的人员。
+2. **Request ID** (`request_id`) - 请求标识符：用于唯一标识单次 API 调用的字符串。
+3. **Max Context** (`max_context`) - 最大上下文长度：模型可处理的最大输入 token 数量限制。
+4. **KV Dtype** (`kv_dtype`) - KV 数据类型：Key-Value 缓存存储所使用的数值精度类型（如 float16）。
+5. **MTP Rounds** (`mtp_rounds`) - MTP 轮数：Multi-Token Prediction（多 token 预测）机制中执行的迭代次数。
+6. **Phase** - 阶段：发布流程中的特定步骤或状态（如准备、预热、测量、发布）。
+7. **Fixture Hash** - 测试数据哈希：用于验证测试数据集完整性的哈希值。
+8. **Prompt Token Count** - 提示词 Token 计数：输入提示词中包含的 token 总数。
+9. **Stop Before Generation** - 生成前停止：在开始生成内容之前终止流程的操作。
+10. **Warmup** - 预热：正式测量前进行的非计时初始化请求过程。
+11. **Unmeasured Request** - 未测量请求：不计入性能统计数据的初始化调用。
+12. **Restart the Service** - 重启服务：当预热失败时重新加载服务的操作。
+13. **Measure** - 测量：执行正式性能基准测试的阶段。
+14. **Sequential Responses** - 顺序响应：按时间顺序连续发出的多个测试请求。
+15. **Invalidate the Complete Block** - 使整个区块失效：当测量阶段出错时废弃该批次所有结果的操作。
+16. **Publish** - 发布：将最终结果公之于众的步骤。
+17. **Per-request Rows** - 每请求行数据：报告中记录每个单独请求详细指标的表格行。
+18. **Withhold the Headline** - 扣留标题/摘要：在数据不可靠时暂时不发布主要结论的操作。
+19. **Prefix Reuse** - 前缀复用：利用相同前缀加速推理的优化技术。
+20. **Cache-Hit Count** - 缓存命中计数：成功从缓存中检索到结果的次数。
+21. **TTFT** - 首 Token 延迟 (Time To First Token)：从发出请求到收到第一个生成 token 的时间。
+22. **Prefill** - 预填充：模型处理输入提示词以构建初始上下文的阶段。

@@ -1,0 +1,541 @@
+## `deterministic-job-runner`
+
+Below is a complete, runnable Python 3.11 package. It uses only the standard library (plus `pytest` for tests), so it runs anywhere without extra dependencies.
+
+**Key design decisions:**
+- **Determinism**: jobs run in manifest order; each job's "work" is a pure function of its config (no wall-clock randomness).
+- **One active GPU job**: enforced by a lock + state check before every dispatch.
+- **Atomic persistence**: `tmp file → fsync → rename` on every state write.
+- **Resume**: completed/failed/cancelled jobs are skipped on restart; in-flight work is re-run from scratch (idempotent).
+- **Structured JSONL events**: one JSON object per line to stdout, flushed immediately.
+- **SIGINT**: first signal cancels the active job gracefully; second forces exit.
+- **Secret redaction**: configured key names are scrubbed from all event output and logs.
+
+---
+
+### `pyproject.toml`
+
+```toml
+[build-system]
+requires = ["setuptools>=68", "wheel"]
+build-backend = "setuptools.build_meta"
+
+[project]
+name = "deterministic-job-runner"
+version = "0.1.0"
+description = "A deterministic asynchronous GPU job runner with atomic state, resume, structured events, SIGINT handling, and secret redaction."
+readme = "README.md"
+requires-python = ">=3.11"
+license = { text = "MIT" }
+authors = [{ name = "Dev Team" }]
+dependencies = []
+
+[project.scripts]
+jobrunner = "deterministic_job_runner.cli:main"
+
+[project.optional-dependencies]
+dev = ["pytest>=7.4", "pytest-asyncio>=0.23"]
+
+[tool.setuptools.packages.find]
+include = ["deterministic_job_runner*"]
+
+[tool.pytest.ini_options]
+asyncio_mode = "auto"
+testpaths = ["tests"]
+```
+
+---
+
+### `deterministic_job_runner/__init__.py`
+
+```python
+"""Deterministic asynchronous GPU job runner."""
+
+from .models import JobSpec, JobState, Manifest, RunnerConfig
+from .runner import JobRunner
+from .events import EventLogger, EventType
+from .state_store import StateStore
+from .redaction import SecretRedactor
+from .manifest_loader import load_manifest, load_config
+
+__all__ = [
+    "JobSpec",
+    "JobState",
+    "Manifest",
+    "RunnerConfig",
+    "JobRunner",
+    "EventLogger",
+    "EventType",
+    "StateStore",
+    "SecretRedactor",
+    "load_manifest",
+    "load_config",
+]
+
+__version__ = "0.1.0"
+```
+
+---
+
+### `deterministic_job_runner/models.py`
+
+```python
+"""Data models for the deterministic job runner."""
+
+from __future__ import annotations
+
+import enum
+import hashlib
+import json
+import math
+import time
+from dataclasses import dataclass, field
+from typing import Any
+
+
+class JobState(str, enum.Enum):
+    PENDING = "pending"
+    RUNNING = "running"
+    COMPLETED = "completed"
+    FAILED = "failed"
+    CANCELLED = "cancelled"
+
+
+@dataclass(frozen=True)
+class JobSpec:
+    """Immutable specification for a single job read from the manifest."""
+
+    id: str
+    gpu_id: int
+    duration: float  # seconds of simulated GPU work
+    should_fail: bool = False
+    fail_after: float = 0.0  # if > 0, fail at this fraction of duration
+    params: dict[str, Any] = field(default_factory=dict)
+
+    def fingerprint(self) -> str:
+        """Deterministic hash of the job configuration."""
+        canonical = json.dumps(
+            {
+                "id": self.id,
+                "gpu_id": self.gpu_id,
+                "duration": self.duration,
+                "should_fail": self.should_fail,
+                "fail_after": self.fail_after,
+                "params": self.params,
+            },
+            sort_keys=True,
+            separators=(",", ":"),
+        )
+        return hashlib.sha256(canonical.encode("utf-8")).hexdigest()[:16]
+
+
+@dataclass
+class JobRecord:
+    """Mutable runtime record tracking a job's lifecycle."""
+
+    spec: JobSpec
+    state: JobState = JobState.PENDING
+    started_at: float | None = None
+    finished_at: float | None = None
+    attempts: int = 0
+    error: str | None = None
+    result: dict[str, Any] | None = None
+
+    @property
+    def is_terminal(self) -> bool:
+        return self.state in (
+            JobState.COMPLETED,
+            JobState.FAILED,
+            JobState.CANCELLED,
+        )
+
+
+@dataclass
+class Manifest:
+    """Parsed manifest containing ordered job specs and metadata."""
+
+    version: str
+    jobs: list[JobSpec] = field(default_factory=list)
+    created_at: str = ""
+
+    def job_ids(self) -> list[str]:
+        return [j.id for j in self.jobs]
+
+
+@dataclass
+class RunnerConfig:
+    """Runtime configuration loaded from config.json or defaults."""
+
+    state_file: str = "state.json"
+    log_file: str = "events.jsonl"
+    poll_interval: float = 0.05  # seconds between scheduler ticks
+    max_retries: int = 0
+    secrets: list[str] = field(default_factory=list)
+    gpu_device: int = -1  # -1 means any; >= 0 pins to specific GPU
+    dry_run: bool = False
+
+    def validate(self) -> None:
+        if self.poll_interval <= 0:
+            raise ValueError("poll_interval must be positive")
+        if self.max_retries < 0:
+            raise ValueError("max_retries must be non-negative")
+```
+
+---
+
+### `deterministic_job_runner/redaction.py`
+
+```python
+"""Secret redaction for structured events and logs."""
+
+from __future__ import annotations
+
+import copy
+import re
+from typing import Any
+
+
+class SecretRedactor:
+    """Recursively redacts values whose keys match configured secret names."""
+
+    REDACTED_SENTINEL = "<REDACTED>"
+
+    def __init__(self, secret_keys: list[str]) -> None:
+        self._secret_keys = set(secret_keys)
+        # Build a regex that matches any secret key as a whole word in JSON-ish contexts
+        escaped = sorted(re.escape(k) for k in secret_keys)
+        if escaped:
+            pattern = "|".join(escaped)
+            self._key_pattern = re.compile(rf"\b({pattern})\b")
+        else:
+            self._key_pattern = None
+
+    def redact(self, value: Any) -> Any:
+        """Return a deep-copied structure with secret values replaced."""
+        return self._redact_value(value)
+
+    def _redact_value(self, value: Any) -> Any:
+        if isinstance(value, dict):
+            out: dict[str, Any] = {}
+            for k, v in value.items():
+                if k in self._secret_keys:
+                    out[k] = self.REDACTED_SENTINEL
+                else:
+                    out[k] = self._redact_value(v)
+            return out
+        if isinstance(value, (list, tuple)):
+            return [self._redact_value(item) for item in value]
+        if isinstance(value, str):
+            # Also scrub inline occurrences in string values (e.g., URLs with tokens)
+            if self._key_pattern:
+                # Replace "key=value" or "key: value" patterns inside strings
+                for key in self._secret_keys:
+                    # Match key followed by separator and capture rest until whitespace/comma/end
+                    esc = re.escape(key)
+                    pattern = rf"{esc}\s*[=:]\s*\S+"
+                    value = re.sub(pattern, f"{key}={self.REDACTED_SENTINEL}", value)
+            return value
+        # Primitives (int, float, bool, None) pass through
+        return value
+
+    def redact_string(self, text: str) -> str:
+        """Redact secret-looking substrings in raw text (for log lines)."""
+        if not self._secret_keys:
+            return text
+        for key in self._secret_keys:
+            esc = re.escape(key)
+            text = re.sub(
+                rf"{esc}\s*[=:]\s*\S+",
+                f"{key}={self.REDACTED_SENTINEL}",
+                text,
+            )
+        return text
+```
+
+---
+
+### `deterministic_job_runner/events.py`
+
+```python
+"""Structured JSONL event logging."""
+
+from __future__ import annotations
+
+import enum
+import json
+import sys
+import time
+from typing import Any, TextIO
+
+from .redaction import SecretRedactor
+
+
+class EventType(str, enum.Enum):
+    RUNNER_START = "runner_start"
+    RUNNER_STOP = "runner_stop"
+    JOB_QUEUED = "job_queued"
+    JOB_STARTED = "job_started"
+    JOB_COMPLETED = "job_completed"
+    JOB_FAILED = "job_failed"
+    JOB_CANCELLED = "job_cancelled"
+    STATE_SAVED = "state_saved"
+    SIGNAL_RECEIVED = "signal_received"
+    RESUME_DETECTED = "resume_detected"
+    ERROR = "error"
+    INFO = "info"
+
+
+class EventLogger:
+    """Writes one JSON object per line to a stream, applying secret redaction."""
+
+    def __init__(
+        self,
+        stream: TextIO | None = None,
+        redactor: SecretRedactor | None = None,
+        *,
+        flush: bool = True,
+    ) -> None:
+        self._stream = stream if stream is not None else sys.stdout
+        self._redactor = redactor or SecretRedactor([])
+        self._flush = flush
+        self._sequence = 0
+
+    def emit(self, event_type: EventType, payload: dict[str, Any], ts: float | None = None) -> dict[str, Any]:
+        """Emit a structured event and return the serialized dict."""
+        self._sequence += 1
+        timestamp = ts if ts is not None else time.time()
+        envelope: dict[str, Any] = {
+            "seq": self._sequence,
+            "ts": round(timestamp, 6),
+            "type": event_type.value,
+            "payload": self._redactor.redact(payload),
+        }
+        line = json.dumps(envelope, sort_keys=True, separators=(",", ":"))
+        self._stream.write(line + "\n")
+        if self._flush:
+            self._stream.flush()
+        return envelope
+
+    def close(self) -> None:
+        try:
+            self._stream.flush()
+        except Exception:
+            pass
+```
+
+---
+
+### `deterministic_job_runner/state_store.py`
+
+```python
+"""Atomic persistent state store."""
+
+from __future__ import annotations
+
+import json
+import os
+import tempfile
+from pathlib import Path
+from typing import Any
+
+from .models import JobRecord, JobState, Manifest, RunnerConfig
+
+
+class StateStore:
+    """Persists runner state atomically via tmp-file + rename."""
+
+    def __init__(self, path: str | Path) -> None:
+        self._path = Path(path)
+        self._path.parent.mkdir(parents=True, exist_ok=True)
+
+    @property
+    def path(self) -> Path:
+        return self._path
+
+    def load(self) -> dict[str, Any] | None:
+        """Load persisted state, returning None if no file exists."""
+        if not self._path.exists():
+            return None
+        try:
+            with open(self._path, "r", encoding="utf-8") as f:
+                data = json.load(f)
+            return data
+        except (json.JSONDecodeError, OSError):
+            return None
+
+    def save(self, state: dict[str, Any]) -> None:
+        """Atomically write state to disk."""
+        content = json.dumps(state, indent=2, sort_keys=True)
+        # Write to temp file in same directory, then atomic rename
+        fd, tmp_path = tempfile.mkstemp(
+            dir=str(self._path.parent), prefix=".state_", suffix=".tmp"
+        )
+        try:
+            with os.fdopen(fd, "w", encoding="utf-8") as f:
+                f.write(content)
+                f.flush()
+                os.fsync(f.fileno())
+            os.replace(tmp_path, str(self._path))
+        except BaseException:
+            # Clean up temp file on failure
+            try:
+                os.unlink(tmp_path)
+            except OSError:
+                pass
+            raise
+
+    def clear(self) -> None:
+        """Remove the state file if it exists."""
+        try:
+            self._path.unlink(missing_ok=True)
+        except OSError:
+            pass
+
+
+def serialize_state(
+    manifest: Manifest,
+    records: dict[str, JobRecord],
+    config: RunnerConfig,
+    run_id: str,
+    next_index: int,
+) -> dict[str, Any]:
+    """Build the serializable state dictionary."""
+    return {
+        "run_id": run_id,
+        "manifest_version": manifest.version,
+        "next_index": next_index,
+        "config": {
+            "state_file": config.state_file,
+            "log_file": config.log_file,
+            "poll_interval": config.poll_interval,
+            "max_retries": config.max_retries,
+            "secrets": config.secrets,
+            "gpu_device": config.gpu_device,
+            "dry_run": config.dry_run,
+        },
+        "jobs": {
+            job_id: {
+                "spec": {
+                    "id": rec.spec.id,
+                    "gpu_id": rec.spec.gpu_id,
+                    "duration": rec.spec.duration,
+                    "should_fail": rec.spec.should_fail,
+                    "fail_after": rec.spec.fail_after,
+                    "params": rec.spec.params,
+                    "fingerprint": rec.spec.fingerprint(),
+                },
+                "state": rec.state.value,
+                "started_at": rec.started_at,
+                "finished_at": rec.finished_at,
+                "attempts": rec.attempts,
+                "error": rec.error,
+                "result": rec.result,
+            }
+            for job_id, rec in records.items()
+        },
+    }
+
+
+def deserialize_records(data: dict[str, Any]) -> dict[str, JobRecord]:
+    """Reconstruct JobRecord objects from serialized state."""
+    from .models import JobSpec
+
+    records: dict[str, JobRecord] = {}
+    jobs_raw = data.get("jobs", {})
+    for job_id, job_data in jobs_raw.items():
+        spec_raw = job_data["spec"]
+        spec = JobSpec(
+            id=spec_raw["id"],
+            gpu_id=spec_raw["gpu_id"],
+            duration=spec_raw["duration"],
+            should_fail=spec_raw.get("should_fail", False),
+            fail_after=spec_raw.get("fail_after", 0.0),
+            params=spec_raw.get("params", {}),
+        )
+        records[job_id] = JobRecord(
+            spec=spec,
+            state=JobState(job_data["state"]),
+            started_at=job_data.get("started_at"),
+            finished_at=job_data.get("finished_at"),
+            attempts=job_data.get("attempts", 0),
+            error=job_data.get("error"),
+            result=job_data.get("result"),
+        )
+    return records
+```
+
+---
+
+### `deterministic_job_runner/manifest_loader.py`
+
+```python
+"""Manifest and config loading from JSON files."""
+
+from __future__ import annotations
+
+import json
+from pathlib import Path
+from typing import Any
+
+from .models import JobSpec, Manifest, RunnerConfig
+
+
+def load_manifest(path: str | Path) -> Manifest:
+    """Parse a JSON manifest file into a Manifest object."""
+    p = Path(path)
+    if not p.exists():
+        raise FileNotFoundError(f"Manifest not found: {p}")
+    with open(p, "r", encoding="utf-8") as f:
+        data: dict[str, Any] = json.load(f)
+
+    version = data.get("version", "1.0")
+    created_at = data.get("created_at", "")
+    jobs_raw = data.get("jobs", [])
+
+    jobs: list[JobSpec] = []
+    seen_ids: set[str] = set()
+    for i, jr in enumerate(jobs_raw):
+        job_id = jr.get("id")
+        if not job_id:
+            raise ValueError(f"Job at index {i} missing 'id'")
+        if job_id in seen_ids:
+            raise ValueError(f"Duplicate job id: {job_id}")
+        seen_ids.add(job_id)
+
+        jobs.append(
+            JobSpec(
+                id=job_id,
+                gpu_id=int(jr.get("gpu_id", 0)),
+                duration=float(jr.get("duration", 0.0)),
+                should_fail=bool(jr.get("should_fail", False)),
+                fail_after=float(jr.get("fail_after", 0.0)),
+                params=jr.get("params", {}),
+            )
+        )
+
+    return Manifest(version=version, jobs=jobs, created_at=created_at)
+
+
+def load_config(path: str | Path) -> RunnerConfig:
+    """Load runner configuration from JSON, falling back to defaults."""
+    p = Path(path)
+    defaults = RunnerConfig()
+    if not p.exists():
+        return defaults
+
+    with open(p, "r", encoding="utf-8") as f:
+        data: dict[str, Any] = json.load(f)
+
+    return RunnerConfig(
+        state_file=data.get("state_file", defaults.state_file),
+        log_file=data.get("log_file", defaults.log_file),
+        poll_interval=float(data.get("poll_interval", defaults.poll_interval)),
+        max_retries=int(data.get("max_retries", defaults.max_retries)),
+        secrets=list(data.get("secrets", defaults.secrets)),
+        gpu_device=int(data.get("gpu_device", defaults.gpu_device)),
+        dry_run=bool(data.get("dry_run", defaults.dry_run)),
+    )
+```
+
+---
+

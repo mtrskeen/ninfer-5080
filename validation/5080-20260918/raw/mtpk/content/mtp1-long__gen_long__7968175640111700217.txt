@@ -1,0 +1,115 @@
+2. Weight reuse in batched inference reduces the effective bandwidth requirement per token by amortizing the cost of memory access across multiple concurrent sequences, thereby shifting the bottleneck from memory to compute.
+
+3. Quantization lowers the bit-width of model parameters, which directly decreases the volume of data transferred between high-bandwidth memory and processing units, allowing for higher throughput without proportional increases in energy consumption.
+
+4. The arithmetic intensity of a layer determines whether it is compute-bound or memory-bound; layers with high matrix multiplication ratios are compute-bound, while those with low ratios, such as layer normalization, are memory-bound.
+
+5. Kernel fusion combines multiple sequential operations into a single kernel launch, eliminating intermediate memory writes and reads, which significantly reduces latency and improves overall pipeline efficiency.
+
+6. Tensor parallelism distributes the computation of a single layer across multiple devices, requiring high-speed interconnects like NVLink to handle the frequent all-reduce communication patterns necessary for synchronization.
+
+7. Pipeline parallelism segments the model into stages assigned to different devices, introducing bubble time during which some devices are idle while waiting for data from upstream stages, thus requiring careful stage balancing.
+
+8. Activation checkpointing trades compute for memory by recomputing intermediate activations during the backward pass instead of storing them, which allows for larger batch sizes or longer sequences but increases total FLOPs.
+
+9. The critical path length of a computational graph dictates the minimum possible latency for a single inference step, independent of the number of available parallel processing units.
+
+10. Sparsity exploitation in dense matrices allows hardware to skip zero-valued elements during computation, reducing both compute cycles and memory bandwidth usage, provided the sparsity pattern is static or efficiently compressible.
+
+11. Dynamic batching aggregates requests arriving within a specific time window into a single batch, optimizing GPU utilization by ensuring the workload size matches the optimal tile size for the hardware’s parallel execution model.
+
+12. Continuous batching, or in-flight batching, allows new sequences to join a running batch as soon as previous sequences finish, maintaining high GPU occupancy and minimizing idle time compared to static batching.
+
+13. Preemptive scheduling policies prioritize shorter jobs to minimize average waiting time, which is beneficial for interactive applications but may starve long-running training jobs if not carefully tuned.
+
+14. Work-conserving schedulers ensure that no processor remains idle while work is available, maximizing throughput in homogeneous clusters where job heterogeneity is low.
+
+15. Fair-share scheduling algorithms allocate resources proportionally to user or project quotas, preventing any single tenant from monopolizing shared infrastructure at the expense of others.
+
+16. Deadlock avoidance strategies, such as resource ordering or wait-die schemes, prevent circular wait conditions in distributed systems by enforcing a consistent order of resource acquisition.
+
+17. Backpressure mechanisms propagate downstream congestion signals upstream, throttling production rates to match consumption capacities and preventing buffer overflow or memory exhaustion in streaming pipelines.
+
+18. Load balancing in heterogeneous clusters requires awareness of node capabilities, mapping compute-intensive tasks to high-performance GPUs and I/O-bound tasks to high-bandwidth storage nodes.
+
+19. Data locality optimization places computation near the data to minimize network traffic, often achieved through co-scheduling policies that bind task execution to the node holding the relevant dataset.
+
+20. Cache hierarchy design balances latency and capacity, with L1 caches providing nanosecond access for frequently used instructions and registers, while main memory provides gigabytes of capacity at microsecond latency.
+
+21. Prefetching techniques predict future memory accesses based on stride patterns or historical behavior, loading data into cache before it is explicitly requested to hide memory latency.
+
+22. Write-back caching delays the propagation of modified data to main memory until the cache line is evicted, reducing redundant writes to slower memory tiers and improving write performance.
+
+23. Non-temporal store instructions bypass the cache hierarchy entirely, writing directly to main memory, which is useful for streaming data that will not be reused soon and would otherwise pollute the cache.
+
+24. Memory interleaving splits large memory addresses across multiple physical memory channels, increasing aggregate bandwidth by allowing simultaneous access to different banks.
+
+25. Double buffering techniques allow one buffer to be read while another is being written, enabling overlap of computation and data transfer phases in pipelined systems.
+
+26. Asynchronous Direct Memory Access (DMA) engines move data between memory and peripherals without CPU intervention, freeing the processor to perform other tasks and reducing overall system latency.
+
+27. Scatter-gather I/O operations allow a single system call to read or write data from multiple non-contiguous memory buffers, reducing the overhead of multiple small I/O calls.
+
+28. Zero-copy techniques avoid copying data between user-space and kernel-space buffers, passing file descriptors or memory references instead, which is critical for high-throughput networking and media processing.
+
+29. Network Interface Cards (NICs) with offload capabilities handle checksum calculation, segmentation, and reassembly in hardware, relieving the CPU from these computationally expensive tasks.
+
+30. Remote Direct Memory Access (RDMA) protocols allow a computer to read or write memory directly in another computer without involving that computer’s operating system, drastically reducing latency for distributed computing.
+
+31. InfiniBand fabric provides low-latency, high-throughput communication for cluster interconnects, supporting lossless transmission and advanced flow control mechanisms essential for tightly coupled parallel processing.
+
+32. Ethernet RoCE (RDMA over Converged Ethernet) adapts RDMA semantics to standard Ethernet networks, offering a cost-effective alternative to InfiniBand for many HPC and AI workloads.
+
+33. Lossless network configuration requires precise tuning of PFC (Priority Flow Control) thresholds to prevent head-of-line blocking while avoiding deadlock scenarios caused by excessive credit pauses.
+
+34. Adaptive routing algorithms dynamically select paths based on current network congestion levels, distributing load evenly and mitigating hotspots in large-scale data center fabrics.
+
+35. Topology-aware scheduling places tasks on nodes that are physically close in the network topology, reducing communication latency and bandwidth consumption for tightly coupled processes.
+
+36. Fat-tree architectures provide high bisection bandwidth and scalability for data center networks, ensuring that any two nodes can communicate at full speed without contention.
+
+37. Dragonfly+ topology uses global links to connect distant groups, reducing diameter and latency compared to pure fat-trees, though it requires more complex routing logic.
+
+38. Sliver-based allocation in multi-tenant clouds reserves contiguous blocks of resources for specific tenants, simplifying isolation and security boundaries at the cost of potential fragmentation.
+
+39. Fragmentation in memory allocators occurs when free space is divided into small, non-contiguous blocks that cannot satisfy large allocation requests, leading to wasted capacity.
+
+40. Defragmentation algorithms periodically rearrange memory blocks to consolidate free space, a process that is computationally expensive and must be scheduled during low-load periods.
+
+41. Buddy allocator systems divide memory into power-of-two sized blocks, simplifying deallocation and merging but potentially wasting up to 50% of allocated space due to rounding up.
+
+42. Slab allocators pre-allocate pools of fixed-size objects, improving performance for frequent allocations of small, identical structures by reducing metadata overhead and fragmentation.
+
+43. Garbage collection compaction phases move live objects to eliminate gaps, a process that causes stop-the-world pauses unless incremental or concurrent collectors are used.
+
+44. Reference counting tracks the number of pointers to an object, immediately freeing memory when the count reaches zero, which is deterministic but incurs overhead for every reference change.
+
+45. Mark-and-sweep garbage collectors identify reachable objects in a mark phase and reclaim unreachable ones in a sweep phase, suitable for managed languages but prone to pause times.
+
+46. Generational garbage collection exploits the weak generational hypothesis that most objects die young, focusing collection efforts on the young generation to reduce overall collection frequency.
+
+47. Concurrent garbage collectors run alongside application threads, using read/write barriers to maintain consistency, which reduces pause times at the cost of increased CPU overhead.
+
+48. Incremental garbage collection divides the collection process into smaller steps interleaved with application execution, bounding the maximum pause time but potentially increasing total GC work.
+
+49. Write barriers are code snippets inserted by the compiler or runtime to track modifications to objects, enabling garbage collectors to maintain accurate reachability information.
+
+50. Card tables or remembered sets record which parts of the old generation have been referenced by the young generation, limiting the scope of cross-generational scanning during minor collections.
+
+51. Object alignment requirements ensure that data structures start at addresses divisible by their size, optimizing cache line usage and enabling efficient vectorized operations.
+
+52. Padding bytes are inserted between struct fields to meet alignment constraints, increasing the memory footprint but ensuring predictable access times on aligned architectures.
+
+53. Cache line size defines the granularity of data transfer between memory and cache, typically 64 bytes, which influences the design of data structures to maximize spatial locality.
+
+54. False sharing occurs when multiple threads write to different variables that reside within the same cache line, causing unnecessary cache invalidations and performance degradation.
+
+55. Padding to avoid false sharing involves adding unused bytes to separate thread-local variables into distinct cache lines, eliminating redundant coherence traffic.
+
+56. Hardware prefetchers analyze access patterns to predict future loads, automatically fetching data into cache before it is needed, which is highly effective for linear array traversals.
+
+57. Software prefetching inserts explicit prefetch instructions in code, allowing developers to guide the hardware prefetcher for irregular access patterns that it cannot predict.
+
+58. Stream prefetching optimizes for sequential memory access patterns, issuing prefetches for the next few cache lines after each load, which is ideal for loop kernels.
+
+59. Spatial prefetching targets arrays of structures, prefetching adjacent elements based on the stride, which helps when accessing

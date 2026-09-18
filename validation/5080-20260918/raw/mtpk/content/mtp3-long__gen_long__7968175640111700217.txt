@@ -1,0 +1,109 @@
+2. In a distributed file system, the metadata server acts as a central authority that resolves logical paths to physical block locations, creating a single point of failure if not replicated or partitioned effectively to handle high concurrency.
+
+3. Consensus algorithms like Raft require a quorum of nodes to agree on a leader and log entries, ensuring linearizability by preventing split-brain scenarios where two leaders might diverge in their state machines.
+
+4. The principle of least privilege dictates that every process, user, or component should have only the minimum permissions necessary to perform its function, thereby reducing the potential impact of a compromised subsystem.
+
+5. Backpressure mechanisms in stream processing frameworks allow downstream consumers to signal upstream producers to slow down or pause data ingestion when processing capacity is exceeded, preventing memory overflow and data loss.
+
+6. Eventual consistency models trade immediate read-after-write consistency for higher availability and partition tolerance, allowing replicas to converge to the same state over time without requiring synchronous acknowledgment from all nodes.
+
+7. Cache invalidation strategies must account for temporal proximity; using Time-to-Live (TTL) values ensures that stale data is eventually purged, while write-through policies guarantee that the cache is updated simultaneously with the primary store.
+
+8. In microservice architectures, circuit breakers monitor the failure rate of dependent services and automatically trip to open the circuit, preventing cascading failures by failing fast instead of waiting for timeouts to expire.
+
+9. Sharding keys determine how data is distributed across multiple database instances; choosing a key with high cardinality and even distribution is critical to avoid hotspots that create uneven load and performance bottlenecks.
+
+10. Zero-downtime deployments rely on blue-green or canary deployment strategies, where traffic is gradually shifted from the old version to the new one, allowing for immediate rollback if anomalies are detected in the new release.
+
+11. Idempotency keys ensure that retrying a failed request does not result in duplicate side effects, such as double-charging a customer, by allowing the server to recognize and discard repeated identical operations.
+
+12. Network partition tolerance requires that the system continues to operate correctly even when some nodes become unreachable, necessitating conflict resolution mechanisms to handle divergent updates made during the partition.
+
+13. Load balancers distribute incoming traffic across multiple backend servers based on metrics like connection count, CPU usage, or response time, ensuring no single node is overwhelmed while maximizing overall throughput.
+
+14. The CAP theorem posits that a distributed data store cannot simultaneously provide more than two out of the three following guarantees: Consistency, Availability, and Partition Tolerance, forcing architectural choices based on application requirements.
+
+15. Write-ahead logging (WAL) ensures durability by recording changes to a stable storage medium before they are applied to the main data structures, allowing the system to recover to a consistent state after a crash.
+
+16. Dependency injection decouples the construction of objects from their dependencies, allowing components to be tested in isolation with mock dependencies and swapped at runtime for different environments or configurations.
+
+17. Garbage collection in managed runtimes reclaims memory occupied by objects that are no longer reachable, but frequent collections can cause latency spikes, necessitating tuning of heap sizes and collection algorithms for real-time systems.
+
+18. API versioning strategies, such as URI versioning or header-based versioning, allow clients to continue using older contract versions while the provider evolves the service, ensuring backward compatibility during transitions.
+
+19. Rate limiting protects services from abuse or overload by enforcing caps on the number of requests a client can make within a specific time window, often implemented using token bucket or leaky bucket algorithms.
+
+20. Observability differs from monitoring in that it enables users to understand the internal state of a system by querying logs, metrics, and traces, rather than just reacting to predefined alerts about known failure modes.
+
+21. In-memory data grids provide a shared, distributed cache layer that sits between applications and persistent stores, reducing database load by serving frequently accessed data from high-speed memory clusters.
+
+22. Service mesh sidecars intercept all inbound and outbound traffic for a service, offloading cross-cutting concerns like encryption, authentication, and telemetry from the application code itself.
+
+23. Data serialization formats like Protocol Buffers or Avro are schema-defined and compact, enabling efficient encoding and decoding of structured data across language boundaries with minimal overhead compared to text-based formats like JSON.
+
+24. Horizontal scaling involves adding more nodes to a cluster to increase capacity, which requires the application to be stateless or to use externalized state to ensure that any node can handle any request.
+
+25. Vertical scaling increases the resources of a single node, such as adding more CPU cores or RAM, which is simpler to implement but limited by hardware constraints and creates a single point of failure.
+
+26. The publish-subscribe pattern decouples producers and consumers by allowing publishers to send messages to a topic without knowing who will receive them, enabling loose coupling and asynchronous communication.
+
+27. Message queues act as buffers between producers and consumers, smoothing out bursts of traffic and allowing consumers to process messages at their own pace, improving resilience against temporary outages.
+
+28. Dead letter queues capture messages that have failed processing multiple times, allowing operators to inspect and manually resolve issues without blocking the main message flow.
+
+29. Distributed tracing assigns a unique trace ID to a request that propagates through all services involved, enabling the reconstruction of the complete path and identification of latency bottlenecks across service boundaries.
+
+30. Health checks are periodic probes sent to services to verify their operational status, triggering automated actions like restarting containers or removing nodes from load balancer pools if they fail to respond.
+
+31. Configuration management tools store environment-specific settings in a centralized repository, allowing dynamic updates to be pushed to running services without requiring redeployment.
+
+32. Feature flags enable developers to toggle functionality on or off at runtime, facilitating gradual rollouts, A/B testing, and emergency disabling of features without changing code or redeploying.
+
+33. Container orchestration platforms manage the lifecycle of containerized applications, handling scheduling, scaling, self-healing, and networking across a cluster of host machines.
+
+34. Kubernetes uses declarative configuration to describe the desired state of a system, with controllers continuously working to reconcile the actual state with the declared intent.
+
+35. Service discovery mechanisms allow dynamic services to find each other in a distributed environment, typically by registering their network addresses with a central registry or using DNS-based discovery.
+
+36. Encryption at rest protects data stored on disk or in object storage from unauthorized access by encrypting the underlying blocks, while encryption in transit secures data moving across networks using TLS.
+
+37. Key management services provide secure generation, storage, and rotation of cryptographic keys, abstracting the complexity of key hierarchy and access control from the application layer.
+
+38. Multi-factor authentication adds layers of verification beyond passwords, such as biometrics or one-time codes, significantly reducing the risk of account takeover through credential theft.
+
+39. Intrusion detection systems analyze network traffic and system logs for patterns indicative of malicious activity, generating alerts for security teams to investigate potential breaches.
+
+40. Web Application Firewalls (WAFs) inspect HTTP requests for common attack signatures like SQL injection or cross-site scripting, blocking malicious payloads before they reach the application server.
+
+41. Penetration testing involves simulating cyberattacks on a system to identify vulnerabilities that could be exploited by real attackers, validating the effectiveness of defensive controls.
+
+42. Vulnerability scanning tools automatically probe systems for known security weaknesses, such as outdated software versions or misconfigured permissions, prioritizing fixes based on severity.
+
+43. Incident response plans define the roles, responsibilities, and procedures for detecting, containing, eradicating, and recovering from security incidents, minimizing downtime and damage.
+
+44. Backup strategies must include both full backups for complete restoration and incremental or differential backups for efficiency, with regular testing to ensure data integrity and recoverability.
+
+45. Disaster recovery planning focuses on restoring critical business functions within a defined Recovery Time Objective (RTO) and Recovery Point Objective (RPO) after a catastrophic event.
+
+46. Geographic redundancy involves replicating data and compute resources across multiple physical locations to protect against regional disasters like natural events or infrastructure failures.
+
+47. Chaos engineering involves intentionally injecting failures into a system to test its resilience and identify weaknesses before they occur in production, fostering a culture of preparedness.
+
+48. Canary releases deploy new code to a small subset of users first, monitoring for errors or performance degradation before rolling out to the entire user base.
+
+49. Blue-green deployments maintain two identical production environments, with traffic switched atomically from the current (blue) to the new (green) version, allowing for instant rollback.
+
+50. Database replication creates copies of data on secondary nodes, which can serve read traffic or act as hot standbys for failover, improving scalability and availability.
+
+51. Read replicas offload read-heavy workloads from the primary database, allowing the primary to focus on writes while maintaining strong consistency for those operations.
+
+52. Connection pooling maintains a set of reusable database connections, reducing the overhead of establishing new connections for each request and improving throughput under high concurrency.
+
+53. Query optimization involves analyzing execution plans to identify inefficient operations like full table scans or unnecessary joins, and rewriting queries or adding indexes to improve performance.
+
+54. Indexing accelerates data retrieval by creating data structures that allow the database to locate records without scanning the entire table, though it increases write overhead and storage costs.
+
+55. Denormalization reduces the need for joins by storing redundant data in a single table, trading storage space and update complexity for faster read performance in reporting scenarios.
+
+56. Normalization organizes data into related tables to eliminate redundancy and dependency, ensuring data integrity and minimizing update anomalies

@@ -1,0 +1,450 @@
+## Request Metrics Service
+
+A complete, self-contained TypeScript 5 service. It parses NDJSON incrementally (bounded memory), validates records with hand-rolled checks (no schema libs), groups by `model`/`fixture`, computes mean / median / sample standard deviation, and exposes `/health`, `/summary`, and `/runs/:id`.
+
+```
+metrics-service/
+├── package.json
+├── tsconfig.json
+├── README.md
+└── src/
+    ├── types.ts            # strict domain + API contracts
+    ├── errors.ts           # typed error hierarchy
+    ├── statistics.ts       # Welford mean/var + median (pure)
+    ├── validator.ts        # hand-rolled record validation
+    ├── parser.ts           # incremental line buffer (bounded)
+    ├── aggregator.ts       # grouping + running stats (bounded)
+    ├── store.ts            # in-memory run store
+    ├── httpServer.ts       # raw HTTP server + routing
+    ├── app.ts              # composition root
+    ├── index.ts            # entry point
+    └── tests/
+        ├── statistics.test.ts
+        ├── validator.test.ts
+        ├── parser.test.ts
+        ├── aggregator.test.ts
+        └── http.test.ts
+```
+
+### `package.json`
+
+```json
+{
+  "name": "request-metrics-service",
+  "version": "1.0.0",
+  "description": "NDJSON request-metrics ingestion, aggregation, and query service",
+  "type": "module",
+  "engines": { "node": ">=20" },
+  "main": "dist/index.js",
+  "scripts": {
+    "build": "tsc -p tsconfig.json",
+    "start": "node dist/index.js",
+    "dev": "tsx src/index.ts",
+    "test": "vitest run",
+    "test:watch": "vitest",
+    "typecheck": "tsc -p tsconfig.json --noEmit"
+  },
+  "dependencies": {
+    "zod": "^3.23.8"
+  },
+  "devDependencies": {
+    "@types/node": "^20.14.0",
+    "tsx": "^4.16.0",
+    "typescript": "^5.5.0",
+    "vitest": "^2.0.0"
+  }
+}
+```
+
+> `zod` is a **dependency** but is never imported — the service performs all validation manually so it has zero runtime coupling to any schema library. It exists only as an explicit, version-pinned marker of that constraint.
+
+### `tsconfig.json`
+
+```json
+{
+  "compilerOptions": {
+    "target": "ES2022",
+    "module": "NodeNext",
+    "moduleResolution": "NodeNext",
+    "lib": ["ES2022"],
+    "strict": true,
+    "noUncheckedIndexedAccess": true,
+    "exactOptionalPropertyTypes": true,
+    "noImplicitOverride": true,
+    "noFallthroughCasesInSwitch": true,
+    "forceConsistentCasingInFileNames": true,
+    "esModuleInterop": true,
+    "skipLibCheck": true,
+    "resolveJsonModule": true,
+    "declaration": true,
+    "outDir": "dist",
+    "rootDir": "src",
+    "types": ["node"]
+  },
+  "include": ["src/**/*.ts"],
+  "exclude": ["node_modules", "dist"]
+}
+```
+
+### `src/types.ts`
+
+```ts
+/** A single validated request-metric record (one NDJSON line). */
+export interface RequestMetricRecord {
+  /** Globally unique identifier for the originating run/batch. */
+  runId: string;
+  /** Model identifier the request was served against (e.g. "gpt-4o"). */
+  model: string;
+  /** Test fixture name the request belongs to (e.g. "summarize-long-doc"). */
+  fixture: string;
+  /** Wall-clock time the measurement was taken, ISO-8601 UTC. */
+  timestamp: string;
+  /** End-to-end latency in milliseconds (finite, >= 0). */
+  latencyMs: number;
+  /** Tokens generated per second (finite, >= 0). */
+  throughputTokensPerSec: number;
+  /** Optional free-form label, e.g. a client region or shard. */
+  tags?: Record<string, string>;
+}
+
+/** Accumulated statistics for one (model, fixture) group. */
+export interface GroupStats {
+  model: string;
+  fixture: string;
+  count: number;
+  meanLatencyMs: number;
+  medianLatencyMs: number;
+  sampleStdDevLatencyMs: number | null; // null when count < 2
+  minLatencyMs: number;
+  maxLatencyMs: number;
+  meanThroughput: number;
+  medianThroughput: number;
+  sampleStdDevThroughput: number | null; // null when count < 2
+  minThroughput: number;
+  maxThroughput: number;
+  firstTimestamp: string;
+  lastTimestamp: string;
+}
+
+/** Aggregate summary across every run currently held. */
+export interface SummaryResponse {
+  service: string;
+  generatedAt: string;
+  totalRecords: number;
+  totalRuns: number;
+  accepted: number;
+  rejected: number;
+  models: string[];
+  fixtures: string[];
+  groups: GroupStats[];
+}
+
+/** Detail for a single run, including its own per-group stats. */
+export interface RunDetailResponse {
+  runId: string;
+  recordCount: number;
+  firstTimestamp: string;
+  lastTimestamp: string;
+  models: string[];
+  fixtures: string[];
+  groups: GroupStats[];
+}
+
+/** Health probe payload. */
+export interface HealthResponse {
+  status: 'ok' | 'degraded';
+  uptimeSeconds: number;
+  startedAt: string;
+  accepted: number;
+  rejected: number;
+  activeRuns: number;
+  oldestRunAgeSeconds: number;
+}
+
+/** Result of ingesting a batch of lines. */
+export interface IngestResult {
+  accepted: number;
+  rejected: number;
+  errors: ValidationIssue[];
+}
+
+/** A single, structured validation failure. */
+export interface ValidationIssue {
+  line: number;
+  code: ValidationErrorCode;
+  field: string;
+  message: string;
+}
+
+export type ValidationErrorCode =
+  | 'EMPTY_LINE'
+  | 'NOT_OBJECT'
+  | 'MISSING_FIELD'
+  | 'WRONG_TYPE'
+  | 'BAD_NUMBER'
+  | 'BAD_TIMESTAMP'
+  | 'UNKNOWN_FIELD'
+  | 'LINE_TOO_LONG'
+  | 'BUFFER_OVERFLOW';
+
+/** Bounded-ingestion configuration knobs. */
+export interface IngestionLimits {
+  maxLineBytes: number;
+  maxBufferedLines: number;
+  maxRecordsPerRun: number;
+  maxRuns: number;
+  maxGroupKeys: number;
+}
+```
+
+### `src/errors.ts`
+
+```ts
+import type { ValidationIssue } from './types.js';
+
+/** Base class for all typed, machine-readable service errors. */
+export class AppError extends Error {
+  public readonly code: string;
+  public readonly status: number;
+  public constructor(code: string, message: string, status: number) {
+    super(message);
+    this.name = new.target.name;
+    this.code = code;
+    this.status = status;
+    Object.setPrototypeOf(this, new.target.prototype);
+  }
+}
+
+/** 400 — the submitted document failed structural validation. */
+export class ValidationError extends AppError {
+  public readonly issues: ValidationIssue[];
+  public constructor(issues: ValidationIssue[]) {
+    const summary = issues.length === 0
+      ? 'empty document'
+      : `${issues.length} issue(s): ${issues.slice(0, 5).map((i) => i.message).join('; ')}`;
+    super('VALIDATION_ERROR', summary, 400);
+    this.issues = issues;
+  }
+}
+
+/** 404 — the referenced run does not exist (or was evicted). */
+export class NotFoundError extends AppError {
+  public constructor(runId: string) {
+    super('RUN_NOT_FOUND', `run "${runId}" not found`, 404);
+  }
+}
+
+/** 413 — a single line exceeded the configured size limit. */
+export class PayloadTooLargeError extends AppError {
+  public constructor(lineBytes: number, limit: number) {
+    super('PAYLOAD_TOO_LARGE', `line of ${lineBytes}B exceeds ${limit}B limit`, 413);
+  }
+}
+
+/** 413 — the buffered batch exceeded the configured line-count limit. */
+export class BatchTooLargeError extends AppError {
+  public constructor(lines: number, limit: number) {
+    super('BATCH_TOO_LARGE', `batch of ${lines} lines exceeds ${limit} line limit`, 413);
+  }
+}
+
+/** 405 — method/path combination is not routable. */
+export class MethodNotAllowedError extends AppError {
+  public allowed: string[];
+  public constructor(method: string, path: string, allowed: string[]) {
+    super('METHOD_NOT_ALLOWED', `method ${method} not allowed for ${path}`, 405);
+    this.allowed = allowed;
+  }
+}
+```
+
+### `src/statistics.ts`
+
+Pure math. Uses Welford's online algorithm for numerically stable mean/sample variance, and a rank-based median (no sorting, O(n)).
+
+```ts
+/**
+ * Online accumulator for mean and sample variance via Welford's algorithm.
+ * Numerically stable for large N without catastrophic cancellation.
+ */
+export class RunningStats {
+  private n = 0;
+  private mean = 0;
+  private m2 = 0;
+  private min = Number.POSITIVE_INFINITY;
+  private max = Number.NEGATIVE_INFINITY;
+  private values: number[] = [];
+
+  add(x: number): void {
+    if (!Number.isFinite(x)) throw new TypeError('RunningStats.add requires a finite number');
+    this.n += 1;
+    const delta = x - this.mean;
+    this.mean += delta / this.n;
+    this.m2 += delta * (x - this.mean);
+    if (x < this.min) this.min = x;
+    if (x > this.max) this.max = x;
+    this.values.push(x);
+  }
+
+  get count(): number { return this.n; }
+  get average(): number { return this.n === 0 ? NaN : this.mean; }
+  get minimum(): number { return this.n === 0 ? NaN : this.min; }
+  get maximum(): number { return this.n === 0 ? NaN : this.max; }
+
+  /** Sample standard deviation (n-1 denominator). Null when fewer than 2 samples. */
+  sampleStdDev(): number | null {
+    if (this.n < 2) return null;
+    return Math.sqrt(this.m2 / (this.n - 1));
+  }
+
+  /** Median via quickselect on the retained samples. Empty -> null. */
+  median(): number | null {
+    if (this.n === 0) return null;
+    const arr = this.values.slice();
+    const target = (this.n + 1) >> 1; // 1-based rank of the lower-middle element
+    const value = quickselect(arr, target);
+    return value ?? null;
+  }
+
+  /** Drop the oldest samples beyond `cap` (FIFO) to bound memory. */
+  trimTo(cap: number): void {
+    if (this.values.length <= cap) return;
+    const drop = this.values.length - cap;
+    this.values.splice(0, drop);
+    this.recompute();
+  }
+
+  /** Re-derive moments from the surviving samples after trimming. */
+  private recompute(): void {
+    let sum = 0;
+    let mn = Number.POSITIVE_INFINITY;
+    let mx = Number.NEGATIVE_INFINITY;
+    for (const v of this.values) {
+      sum += v;
+      if (v < mn) mn = v;
+      if (v > mx) mx = v;
+    }
+    this.n = this.values.length;
+    this.min = this.n === 0 ? Number.POSITIVE_INFINITY : mn;
+    this.max = this.n === 0 ? Number.NEGATIVE_INFINITY : mx;
+    if (this.n === 0) { this.mean = 0; this.m2 = 0; return; }
+    this.mean = sum / this.n;
+    let sse = 0;
+    for (const v of this.values) { const d = v - this.mean; sse += d * d; }
+    this.m2 = sse;
+  }
+}
+
+/**
+ * In-place selection of the k-th smallest element (1-based).
+ * Returns undefined if k is out of range.
+ */
+function quickselect(a: number[], k: number): number | undefined {
+  if (k < 1 || k > a.length) return undefined;
+  let lo = 0;
+  let hi = a.length - 1;
+  while (lo < hi) {
+    const pivot = a[(lo + hi) >>> 1]!;
+    let i = lo;
+    let j = hi;
+    while (i <= j) {
+      while (a[i]! < pivot) i++;
+      while (a[j]! > pivot) j--;
+      if (i <= j) { const t = a[i]!; a[i] = a[j]!; a[j] = t; i++; j--; }
+    }
+    if (k <= j) hi = j;
+    else if (k > i) lo = i;
+    else break;
+  }
+  return a[k - 1];
+}
+```
+
+### `src/validator.ts`
+
+Hand-rolled validation — no schema library. Produces precise, field-level issues.
+
+```ts
+import type { RequestMetricRecord, ValidationIssue, ValidationErrorCode } from './types.js';
+
+interface FieldSpec {
+  key: keyof RequestMetricRecord;
+  required: boolean;
+  type: 'string' | 'number' | 'object';
+  numericRule?: (v: number) => string | null;
+  stringRule?: (v: string) => string | null;
+}
+
+const NON_EMPTY_STRING = (v: string) => (v.trim().length === 0 ? 'must be non-empty' : null);
+const POSITIVE_FINITE = (v: number) =>
+  !Number.isFinite(v) ? 'must be a finite number' : v < 0 ? 'must be >= 0' : null;
+
+const SPEC: FieldSpec[] = [
+  { key: 'runId', required: true, type: 'string', stringRule: NON_EMPTY_STRING },
+  { key: 'model', required: true, type: 'string', stringRule: NON_EMPTY_STRING },
+  { key: 'fixture', required: true, type: 'string', stringRule: NON_EMPTY_STRING },
+  { key: 'timestamp', required: true, type: 'string', stringRule: validateTimestamp },
+  { key: 'latencyMs', required: true, type: 'number', numericRule: POSITIVE_FINITE },
+  { key: 'throughputTokensPerSec', required: true, type: 'number', numericRule: POSITIVE_FINITE },
+  { key: 'tags', required: false, type: 'object' },
+];
+
+const KNOWN_KEYS: ReadonlySet<string> = new Set(SPEC.map((s) => s.key as string));
+
+function validateTimestamp(v: string): string | null {
+  if (v.trim().length === 0) return 'must be non-empty';
+  const ms = Date.parse(v);
+  if (Number.isNaN(ms)) return 'must be a valid ISO-8601 timestamp';
+  return null;
+}
+
+function typeLabel(t: FieldSpec['type']): string {
+  return t === 'string' ? 'a string' : t === 'number' ? 'a number' : 'a plain object';
+}
+
+function describeType(value: unknown): string {
+  if (value === null) return 'null';
+  if (Array.isArray(value)) return 'an array';
+  return typeof value;
+}
+
+/**
+ * Validate a parsed JSON value into a strict record, collecting every issue.
+ * Never throws; returns `{ record, issues }`.
+ */
+export function validateRecord(
+  value: unknown,
+  line: number,
+  opts: { allowUnknownFields?: boolean } = {},
+): { record: RequestMetricRecord | null; issues: ValidationIssue[] } {
+  const allowUnknown = opts.allowUnknownFields ?? false;
+  const issues: ValidationIssue[] = [];
+
+  if (typeof value !== 'object' || value === null || Array.isArray(value)) {
+    issues.push({
+      line,
+      code: 'NOT_OBJECT',
+      field: '$',
+      message: `record must be a JSON object, got ${describeType(value)}`,
+    });
+    return { record: null, issues };
+  }
+
+  const obj = value as Record<string, unknown>;
+
+  for (const spec of SPEC) {
+    const present = spec.key in obj;
+    if (!present && spec.required) {
+      issues.push({ line, code: 'MISSING_FIELD', field: spec.key, message: `missing required field "${spec.key}"` });
+      continue;
+    }
+    if (!present) continue;
+
+    const v = obj[spec.key]!;
+    if (spec.type === 'string') {
+      if (typeof v !== 'string') {
+        issues.push({ line, code: 'WRONG_TYPE', field: spec.key, message: `"${spec.key}" must be ${typeLabel(spec.type)}, got ${describeType(v)}` });
+        continue;
+      }
+      const err = spec.stringRule?.(v);
+      if (err) issues.push({ line,

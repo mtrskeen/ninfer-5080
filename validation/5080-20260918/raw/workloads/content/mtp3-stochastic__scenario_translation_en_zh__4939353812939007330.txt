@@ -1,0 +1,68 @@
+**第一节 — 所有权归属**
+可靠的推理服务为每个可变边界（mutable frontier）指定唯一的所有者。程序可以将数学运算委托给内核执行，但内核不会静默地推进请求状态。这种分离机制使得成功轮次、被拒绝的投机草稿、取消操作以及前缀恢复等过程，均可作为完整的状态迁移被观测到。
+
+**第二节 — 度量指标**
+加载时间、提示词准备、预填充（prefill）、解码（decode）和网络传输分别回答不同的问题。基准测试必须明确标注每一项报告速率所对应的具体区间。在本引擎中，首个生成的令牌归属于预填充阶段，而其余生成的令牌归属于解码阶段，因此令牌计数必须遵循相同的边界定义。
+
+**第三节 — 可复现性**
+在正式运行之前，所有输入均被冻结。系统会保留请求体、已解析的采样参数、模型标识、上下文容量、缓存格式以及原始计时字段。预热请求会被单独标记并排除在外，而不混入受测的重复运行样本中。
+
+**第四节 — 长上下文**
+分配最大缓存容量并不等同于呈现最长长度的提示词。引擎可以维持 262,144 令牌的分配额度，同时测试过程中实际准备好的提示词长度可以变化。这样可以在不改变各测试用例间内存计划的前提下，隔离出可见上下文的成本。
+
+**第五节 — 投机解码**
+草稿接受率取决于工作负载类型。代码、散文、翻译和结构化记录具有不同的局部可预测性，因此既需要统计草稿接受百分比，也需要统计每轮输出的令牌数。吞吐量仍然是用户可见的最终结果；接受率统计数据用于解释而非取代该结果。
+
+**第六节 — 报告规范**
+应发布完整的配置信息、重复测量数据、变异情况以及实质性限制条件。不得丢弃有效的慢速运行记录，也不得将内部计时器描述为客户端观测到的延迟。清晰的边界界定会使优异的结果更易于获得信任。
+
+***
+
+**英中术语表**
+
+1. Inference service — 推理服务
+2. Mutable frontier — 可变边界
+3. Owner — 所有者
+4. Kernel — 内核
+5. Request state — 请求状态
+6. Successful rounds — 成功轮次
+7. Speculative drafts — 投机草稿
+8. Cancellation — 取消操作
+9. Prefix restoration — 前缀恢复
+10. Complete transitions — 完整状态迁移
+11. Loading time — 加载时间
+12. Prompt preparation — 提示词准备
+13. Prefill — 预填充
+14. Decode — 解码
+15. Network transport — 网络传输
+16. Benchmark — 基准测试
+17. Reported rate — 报告速率
+18. Generated token — 生成的令牌
+19. Reproducibility — 可复现性
+20. Frozen inputs — 冻结的输入
+21. Sampling parameters — 采样参数
+22. Model identity — 模型标识
+23. Context capacity — 上下文容量
+24. Cache format — 缓存格式
+25. Raw timing fields — 原始计时字段
+26. Warm-up requests — 预热请求
+27. Measured repetitions — 受测重复样本
+28. Long context — 长上下文
+29. Maximum cache capacity — 最大缓存容量
+30. Allocation — 分配
+31. Visible context — 可见上下文
+32. Memory plan — 内存计划
+33. Speculation — 投机解码
+34. Draft acceptance — 草稿接受
+35. Workload dependent — 依赖工作负载
+36. Local predictability — 局部可预测性
+37. Accepted-draft percentage — 草稿接受百分比
+38. Output tokens per round — 每轮输出令牌数
+39. Throughput — 吞吐量
+40. User-visible result — 用户可见结果
+41. Configuration — 配置
+42. Variation — 变异/波动
+43. Material limitations — 实质性限制
+44. Valid slow run — 有效的慢速运行
+45. Internal timer — 内部计时器
+46. Client-observed latency — 客户端观测延迟

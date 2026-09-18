@@ -1,0 +1,121 @@
+2. In contrast, the prefill phase is compute bound, as the matrix multiplications involve large batches of tokens that saturate the arithmetic logic units before memory bandwidth becomes the limiting factor.
+
+3. Memory hierarchy optimization relies on keeping frequently accessed weights in high-bandwidth on-chip SRAM or HBM to minimize the latency incurred by accessing slower off-chip DRAM during inference.
+
+4. Quantization reduces the precision of model parameters from 16-bit floating point to 8-bit or even 4-bit integers, significantly lowering memory footprint and increasing effective throughput by reducing data movement volume.
+
+5. Kernel fusion combines multiple small operations, such as element-wise additions and activations, into a single GPU kernel to eliminate redundant memory reads and writes between intermediate tensors.
+
+6. Batch normalization layers require careful handling in inference pipelines because they rely on running statistics computed during training, which must be frozen and stored separately to ensure deterministic behavior.
+
+7. The transformer architecture’s self-attention mechanism scales quadratically with sequence length, necessitating efficient implementations like FlashAttention that avoid materializing the full attention matrix in global memory.
+
+8. Sparse activation patterns in feed-forward networks allow for conditional computation, where only non-zero weights are processed, potentially reducing energy consumption if the sparsity is high enough to offset control overhead.
+
+9. Tensor parallelism distributes the weight matrices of a single layer across multiple GPUs, requiring all-reduce operations to synchronize partial results, which introduces communication latency that must be minimized via high-speed interconnects.
+
+10. Pipeline parallelism splits the model into stages across devices, allowing different batches to occupy different stages simultaneously, thereby hiding communication latency behind computation time for improved overall utilization.
+
+11. Mixed-precision training utilizes lower-precision formats for forward and backward passes while maintaining higher precision for parameter updates, balancing numerical stability with computational efficiency.
+
+12. Gradient accumulation simulates larger batch sizes by updating weights only after several smaller steps, which is crucial for fitting large models into limited memory without compromising convergence dynamics.
+
+13. Checkpointing strategies must balance frequency and storage cost; saving too often wastes I/O bandwidth, while saving too rarely risks losing significant progress due to hardware failures or software bugs.
+
+14. Distributed data parallelism replicates the entire model on each device and shards the input data, requiring gradient synchronization via ring-allreduce to maintain consistency across replicas.
+
+15. Ring-allreduce algorithms achieve optimal bandwidth utilization by passing partial reductions in a circular topology, ensuring that every node contributes equally to the final aggregated result.
+
+16. Tree-based reduction schemes offer lower latency for small message sizes but suffer from bandwidth inefficiency at scale, making them less suitable for the large gradient tensors typical in modern deep learning.
+
+17. Overlapping communication and computation is essential for hiding the latency of inter-node transfers, requiring precise scheduling to ensure that compute units remain busy while data is in transit.
+
+18. Network interface card (NIC) offloading accelerates collective operations by performing reduce-scatter and all-gather directly on the NIC, freeing up the CPU and GPU for primary tensor operations.
+
+19. RDMA (Remote Direct Memory Access) enables zero-copy data transfer between remote memory spaces, drastically reducing CPU involvement and latency for high-throughput distributed training clusters.
+
+20. InfiniBand fabrics provide low-latency, lossless networking suitable for tightly coupled training clusters, whereas Ethernet-based RoCE requires careful tuning of congestion control mechanisms.
+
+21. Topology-aware placement of worker nodes minimizes cross-rack traffic, leveraging local switch bandwidth for intra-node communication and reserving backbone links for inter-node synchronization.
+
+22. Load imbalance across GPUs in data-parallel setups can occur due to variable sequence lengths, causing some workers to finish early and idle while others continue computing, reducing overall efficiency.
+
+23. Dynamic batching adjusts batch size based on available memory and sequence length distribution, maximizing throughput by packing sequences tightly without exceeding hardware limits.
+
+24. Padding tokens to equalize sequence lengths within a batch introduces wasted computation, which can be mitigated by using bucketing strategies that group similar-length sequences together.
+
+25. Variable-length sequence processing requires custom kernels that handle ragged tensors efficiently, avoiding the memory overhead and compute waste associated with rectangular padding.
+
+26. Attention masking ensures that causal language models do not attend to future tokens, implemented via boolean masks that zero out invalid attention scores before softmax normalization.
+
+27. Key-value cache management in autoregressive decoding stores previously computed keys and values to avoid recomputation, growing linearly with sequence length and requiring careful eviction policies.
+
+28. Sliding window attention limits the context range for each token to a fixed size, reducing memory usage and compute cost at the expense of long-range dependency modeling capability.
+
+29. Multi-head attention projects queries, keys, and values into multiple subspaces, allowing the model to attend to different representation subspaces at different positions simultaneously.
+
+30. Layer normalization stabilizes training by normalizing activations across the feature dimension for each sample, preventing the vanishing or exploding gradient problems common in deep networks.
+
+31. Residual connections provide a direct path for gradients to flow through the network, facilitating the training of very deep architectures by mitigating the degradation problem.
+
+32. Positional encodings inject information about token order into the input embeddings, as the self-attention mechanism itself is permutation-invariant and lacks inherent sequence awareness.
+
+33. Sinusoidal positional encodings use fixed mathematical functions to generate position representations, offering extrapolation capabilities beyond the training sequence length without learned parameters.
+
+34. Learned positional embeddings store specific vectors for each position, allowing the model to adapt position representations to the data distribution but limiting generalization to unseen lengths.
+
+35. Relative positional encodings encode the distance between tokens rather than their absolute positions, enabling the model to generalize better to longer sequences than absolute encodings.
+
+36. RoPE (Rotary Position Embedding) applies rotation matrices to query and key vectors based on their relative positions, preserving inner product properties while encoding positional information.
+
+37. Feed-forward networks within transformer blocks typically apply a non-linear transformation to the hidden state, expanding dimensions first before projecting back down to capture complex interactions.
+
+38. GELU (Gaussian Error Linear Unit) activation functions smooth the ReLU curve, providing better gradient flow and empirical performance improvements in transformer architectures.
+
+39. SwiGLU combines sigmoid and linear units with gating mechanisms, offering superior expressivity over standard ReLU or GELU with comparable parameter counts.
+
+40. Dropout regularization randomly zeroes out activations during training to prevent co-adaptation of neurons, acting as an ensemble method that improves generalization to unseen data.
+
+41. Weight decay serves as an L2 regularization term, penalizing large weight values to keep the model function simple and reduce overfitting risk.
+
+42. Learning rate scheduling adjusts the step size during training, typically starting high for rapid exploration and decaying slowly to fine-tune convergence near the loss minimum.
+
+43. Warm-up phases gradually increase the learning rate from zero to its peak value, stabilizing early training steps when gradients may be noisy or unstable.
+
+44. Cosine decay schedules follow a cosine curve for learning rate reduction, providing a smooth decay profile that often outperforms stepwise or linear schedules in practice.
+
+45. Adam optimizer maintains first and second moment estimates of gradients, adapting per-parameter learning rates to handle sparse gradients and varying scales effectively.
+
+46. AdamW decouples weight decay from the adaptive moment estimates, ensuring proper regularization behavior that standard Adam often fails to provide correctly.
+
+47. Stochastic Gradient Descent (SGD) with momentum accumulates past gradients to accelerate convergence and dampen oscillations in the optimization landscape.
+
+48. Nesterov momentum looks ahead in the direction of the current velocity vector, providing a more accurate estimate of the next step’s position for improved convergence speed.
+
+49. Adaptive optimizers like RMSprop divide gradients by a running average of squared gradients, automatically scaling learning rates for each parameter based on recent history.
+
+50. Gradient clipping prevents explosion of gradients in recurrent or deep networks by capping the norm of the gradient vector, ensuring stable updates even with volatile signals.
+
+51. Loss function design must align with the task objective, such as cross-entropy for classification or mean squared error for regression, directly shaping the optimization trajectory.
+
+52. Focal loss modifies cross-entropy by down-weighting easy examples, focusing optimization capacity on hard-to-classify samples prevalent in imbalanced datasets.
+
+53. Label smoothing prevents the model from becoming overly confident in predictions, adding a small amount of entropy to the target distribution to improve calibration.
+
+54. Knowledge distillation transfers knowledge from a large teacher model to a smaller student model by matching soft probability distributions, compressing model size while retaining accuracy.
+
+55. Feature distillation aligns intermediate representations between teacher and student networks, encouraging the student to learn similar internal features rather than just output probabilities.
+
+56. Pruning removes redundant weights or neurons from a trained model, reducing inference cost and memory footprint while maintaining acceptable accuracy levels.
+
+57. Structured pruning eliminates entire filters or channels, allowing the resulting sparse model to run efficiently on standard hardware without specialized sparse execution support.
+
+58. Unstructured pruning sets individual weights to zero, achieving higher compression ratios but requiring specialized libraries or hardware acceleration for efficient execution.
+
+59. Sparsity-aware compilation optimizes graph execution for pruned models, skipping zero-valued computations and reducing memory access patterns accordingly.
+
+60. Model compression techniques combine quantization, pruning, and distillation to create highly efficient variants suitable for edge deployment or real-time applications.
+
+61. Inference engines like TensorRT optimize PyTorch models by fusing layers, quantizing weights, and optimizing memory layout for maximum GPU throughput.
+
+62

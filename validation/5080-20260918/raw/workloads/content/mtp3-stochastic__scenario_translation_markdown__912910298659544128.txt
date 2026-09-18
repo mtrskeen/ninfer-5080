@@ -1,0 +1,63 @@
+# 发布流程
+
+发布负责人必须精确保留诸如 `request_id`、`max_context`、`kv_dtype` 和 `mtp_rounds` 等标识符。将散文内容翻译为中文，但不得翻译代码、JSON 键、命令行标志、文件名或表格中的值。
+
+| Phase | Required evidence | Failure action |
+|---|---|---|
+| prepare | fixture hash and prompt-token count | stop before generation |
+| warmup | one successful unmeasured request | restart the service |
+| measure | five sequential responses | invalidate the complete block |
+| publish | summary plus per-request rows | withhold the headline |
+
+```json
+{"model":"qwen3.6-35b-a3b","max_completion_tokens":1024,"seed":42,"stream":false}
+```
+
+## 注意事项
+
+操作员需检查前缀重用已禁用、缓存命中计数为零，且没有无关的 GPU 进程处于活动状态。自然停止的响应仍被视为有效观察；因客户端断开连接而丢失的响应则不被视为有效观察。报告区分服务器内部 TTFT 与网络观测时间，并解释首个生成的 token 被分配给 prefill 阶段。
+
+***
+
+### 双语术语表 (Bilingual Glossary)
+
+1. **Release owner** / 发布负责人
+   - The individual responsible for managing the software release lifecycle.
+2. **Request ID** / 请求标识符
+   - A unique identifier assigned to a specific API call or transaction.
+3. **Max Context** / 最大上下文长度
+   - The upper limit of tokens the model can process in a single context window.
+4. **KV Dtype** / KV 数据类型
+   - The data type used for storing Key-Value cache entries (e.g., float16, int8).
+5. **MTP Rounds** / MTP 轮次
+   - Multi-Token Prediction rounds, referring to speculative decoding steps.
+6. **Fixture Hash** / 测试夹具哈希
+   - A checksum ensuring test data integrity and reproducibility.
+7. **Prompt Token Count** / 提示词令牌数
+   - The number of tokens in the input prompt sent to the model.
+8. **Unmeasured Request** / 未测量请求
+   - A request executed without timing instrumentation, often for warming up caches.
+9. **Sequential Responses** / 顺序响应
+   - Multiple responses generated in a strict serial order rather than concurrently.
+10. **Complete Block** / 完整块
+    - A contiguous set of data or results that must be treated as a single unit.
+11. **Per-request Rows** / 每请求行数据
+    - Detailed metrics logged individually for each specific request.
+12. **Headline** / 标题/摘要结论
+    - The primary summary statement or key metric highlighted in the report.
+13. **Prefix Reuse** / 前缀重用
+    - Optimizing inference by reusing cached computations for common prompt prefixes.
+14. **Cache Hit Count** / 缓存命中计数
+    - The number of times the system retrieves data from the cache instead of recomputing.
+15. **GPU Process** / GPU 进程
+    - A running process utilizing Graphics Processing Unit resources.
+16. **Valid Observation** / 有效观察
+    - A data point considered reliable and usable for analysis.
+17. **Client Disconnection** / 客户端断开
+    - The termination of connection initiated by the client side.
+18. **Server-internal TTFT** / 服务器内部首字延迟
+    - Time To First Token measured within the server environment, excluding network latency.
+19. **Network-observed Time** / 网络观测时间
+    - Latency measured from the client's perspective, including network transmission time.
+20. **Prefill** / 预填充
+    - The initial phase of LLM inference where the input prompt is processed to generate the first output token.

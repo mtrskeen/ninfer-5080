@@ -1,0 +1,63 @@
+# 发布流程
+
+发布负责人必须严格保留诸如 `request_id`、`max_context`、`kv_dtype` 和 `mtp_rounds` 等标识符。请将正文内容翻译为中文，但不要翻译代码、JSON 键值、命令行标志、文件名或表格中的数值。
+
+| Phase | Required evidence | Failure action |
+|---|---|---|
+| prepare | fixture hash and prompt-token count | stop before generation |
+| warmup | one successful unmeasured request | restart the service |
+| measure | five sequential responses | invalidate the complete block |
+| publish | summary plus per-request rows | withhold the headline |
+
+```json
+{"model":"qwen3.6-35b-a3b","max_completion_tokens":1024,"seed":42,"stream":false}
+```
+
+## 注意事项
+
+操作员需检查前缀复用是否已禁用、缓存命中计数是否为零，以及是否有无关的 GPU 进程正在运行。自然停止的响应仍视为有效观测；因客户端断开连接而丢失的响应则不视为有效观测。报告需区分服务器内部 TTFT 与网络观测时间，并说明首个生成的 token 被分配给 prefill 阶段。
+
+---
+
+### 双语术语表 (Bilingual Glossary)
+
+1. **Release owner** / 发布负责人
+   - Note: The individual accountable for executing the release process.
+2. **Identifier** / 标识符
+   - Note: A unique string or value used to distinguish specific entities or requests.
+3. **Prose** / 正文
+   - Note: The natural language text of the document, excluding code or data structures.
+4. **Fixture** / 测试夹具
+   - Note: Pre-defined input data or environment setup used for consistent testing.
+5. **Hash** / 哈希值
+   - Note: A fixed-length digital fingerprint of data, used for integrity verification.
+6. **Prompt-token count** / 提示词 Token 数
+   - Note: The number of tokens in the initial user input provided to the model.
+7. **Warmup** / 预热
+   - Note: Initial run to stabilize system performance before actual measurement.
+8. **Unmeasured request** / 未计量请求
+   - Note: A request executed for calibration without being included in final metrics.
+9. **Sequential responses** / 连续响应
+   - Note: Multiple outputs generated one after another in a defined order.
+10. **Invalidate** / 使无效
+    - Note: To mark data or results as unusable due to detected errors.
+11. **Publish** / 发布
+    - Note: The stage where validated results are made publicly available.
+12. **Withhold** / 扣留
+    - Note: To temporarily hold back information from publication pending review.
+13. **Prefix reuse** / 前缀复用
+    - Note: Reusing previously computed context states to optimize inference speed.
+14. **Cache-hit count** / 缓存命中计数
+    - Note: The number of times data is retrieved from cache rather than recomputed.
+15. **GPU process** / GPU 进程
+    - Note: A program actively utilizing graphics processing unit resources.
+16. **Valid observation** / 有效观测
+    - Note: Data point that meets criteria for inclusion in statistical analysis.
+17. **Client disconnected** / 客户端断开
+    - Note: Loss of connection between the user's interface and the server.
+18. **TTFT** / 首字延迟 (Time To First Token)
+    - Note: Latency measured from request start to the first output token.
+19. **Prefill** / 预填充
+    - Note: The phase where the model processes the entire input prompt at once.
+20. **Max completion tokens** / 最大完成 Token 数
+    - Note: The upper limit on the number of tokens the model can generate in a response.

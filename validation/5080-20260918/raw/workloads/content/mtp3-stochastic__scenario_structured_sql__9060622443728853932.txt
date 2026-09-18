@@ -1,0 +1,176 @@
+DROP VIEW IF EXISTS v_model_fixture_summary;
+DROP VIEW IF EXISTS v_mtp_acceptance_rate;
+DROP FUNCTION IF EXISTS upsert_request_metrics CASCADE;
+DROP TABLE IF EXISTS request_metrics;
+DROP TABLE IF EXISTS runs;
+DROP TABLE IF EXISTS fixtures;
+DROP TABLE IF EXISTS models;
+
+CREATE TABLE models (
+    model_id SERIAL PRIMARY KEY,
+    name VARCHAR(100) NOT NULL UNIQUE,
+    family VARCHAR(50) NOT NULL,
+    param_count BIGINT CHECK (param_count > 0),
+    context_length INT CHECK (context_length > 0),
+    supports_mtp BOOLEAN DEFAULT FALSE,
+    created_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP
+);
+
+CREATE TABLE fixtures (
+    fixture_id SERIAL PRIMARY KEY,
+    kind VARCHAR(50) NOT NULL,
+    description TEXT,
+    avg_token_length INT CHECK (avg_token_length > 0),
+    is_long_context BOOLEAN DEFAULT FALSE,
+    created_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP,
+    CONSTRAINT chk_kind_valid CHECK (kind IN ('short_qa', 'long_doc', 'code_gen', 'math_reasoning'))
+);
+
+CREATE TABLE runs (
+    run_id SERIAL PRIMARY KEY,
+    model_id INT NOT NULL REFERENCES models(model_id),
+    fixture_id INT NOT NULL REFERENCES fixtures(fixture_id),
+    started_at TIMESTAMP NOT NULL,
+    finished_at TIMESTAMP,
+    status VARCHAR(20) DEFAULT 'running' CHECK (status IN ('running', 'completed', 'failed')),
+    batch_size INT CHECK (batch_size > 0),
+    max_tokens INT CHECK (max_tokens > 0)
+);
+
+CREATE INDEX idx_runs_model ON runs(model_id);
+CREATE INDEX idx_runs_fixture ON runs(fixture_id);
+CREATE INDEX idx_runs_status ON runs(status);
+CREATE INDEX idx_runs_started ON runs(started_at);
+
+CREATE TABLE request_metrics (
+    metric_id BIGSERIAL PRIMARY KEY,
+    run_id INT NOT NULL REFERENCES runs(run_id),
+    request_index INT NOT NULL CHECK (request_index >= 0),
+    input_tokens INT CHECK (input_tokens >= 0),
+    output_tokens INT CHECK (output_tokens >= 0),
+    latency_ms FLOAT CHECK (latency_ms >= 0),
+    mtp_accepted_tokens INT DEFAULT 0 CHECK (mtp_accepted_tokens >= 0),
+    mtp_total_tokens INT DEFAULT 0 CHECK (mtp_total_tokens >= 0),
+    retention_score FLOAT CHECK (retention_score BETWEEN 0.0 AND 1.0),
+    recorded_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP,
+    CONSTRAINT uq_run_request UNIQUE (run_id, request_index)
+);
+
+CREATE INDEX idx_metrics_run ON request_metrics(run_id);
+CREATE INDEX idx_metrics_latency ON request_metrics(latency_ms);
+CREATE INDEX idx_metrics_mtp ON request_metrics(mtp_accepted_tokens, mtp_total_tokens);
+
+CREATE VIEW v_model_fixture_summary AS
+SELECT 
+    m.name AS model_name,
+    f.kind AS fixture_kind,
+    COUNT(DISTINCT r.run_id) AS total_runs,
+    AVG(rm.output_tokens::FLOAT / NULLIF(rm.latency_ms/1000.0, 0)) AS avg_throughput_tps,
+    STDDEV_POP(rm.output_tokens::FLOAT / NULLIF(rm.latency_ms/1000.0, 0)) AS std_dev_throughput,
+    AVG(rm.retention_score) AS avg_retention
+FROM models m
+JOIN runs r ON m.model_id = r.model_id
+JOIN fixtures f ON r.fixture_id = f.fixture_id
+JOIN request_metrics rm ON r.run_id = rm.run_id
+WHERE r.status = 'completed'
+GROUP BY m.name, f.kind;
+
+CREATE VIEW v_mtp_acceptance_rate AS
+SELECT 
+    m.name AS model_name,
+    f.kind AS fixture_kind,
+    SUM(rm.mtp_total_tokens)::FLOAT / NULLIF(SUM(rm.mtp_total_tokens), 0) * 100.0 AS total_mtp_ratio_pct,
+    SUM(rm.mtp_accepted_tokens)::FLOAT / NULLIF(SUM(rm.mtp_total_tokens), 0) * 100.0 AS acceptance_rate_pct,
+    COUNT(*) AS sample_count
+FROM models m
+JOIN runs r ON m.model_id = r.model_id
+JOIN fixtures f ON r.fixture_id = f.fixture_id
+JOIN request_metrics rm ON r.run_id = rm.run_id
+WHERE r.status = 'completed' AND m.supports_mtp = TRUE
+GROUP BY m.name, f.kind;
+
+CREATE OR REPLACE FUNCTION upsert_request_metrics(
+    p_run_id INT,
+    p_request_index INT,
+    p_input_tokens INT,
+    p_output_tokens INT,
+    p_latency_ms FLOAT,
+    p_mtp_accepted INT,
+    p_mtp_total INT,
+    p_retention FLOAT
+) RETURNS VOID AS $$
+BEGIN
+    INSERT INTO request_metrics (
+        run_id, request_index, input_tokens, output_tokens, 
+        latency_ms, mtp_accepted_tokens, mtp_total_tokens, retention_score
+    ) VALUES (
+        p_run_id, p_request_index, p_input_tokens, p_output_tokens,
+        p_latency_ms, p_mtp_accepted, p_mtp_total, p_retention
+    )
+    ON CONFLICT (run_id, request_index) DO UPDATE SET
+        input_tokens = EXCLUDED.input_tokens,
+        output_tokens = EXCLUDED.output_tokens,
+        latency_ms = EXCLUDED.latency_ms,
+        mtp_accepted_tokens = EXCLUDED.mtp_accepted_tokens,
+        mtp_total_tokens = EXCLUDED.mtp_total_tokens,
+        retention_score = EXCLUDED.retention_score,
+        recorded_at = CURRENT_TIMESTAMP;
+END;
+$$ LANGUAGE plpgsql;
+
+INSERT INTO models (name, family, param_count, context_length, supports_mtp) VALUES
+('Llama-3-8B-Instruct', 'Llama', 8000000000, 8192, FALSE),
+('Mistral-Nemo-12B', 'Mistral', 12000000000, 32768, TRUE);
+
+INSERT INTO fixtures (kind, description, avg_token_length, is_long_context) VALUES
+('short_qa', 'Simple Q&A pairs', 50, FALSE),
+('long_doc', 'Long document summarization', 4096, TRUE),
+('code_gen', 'Code completion tasks', 200, FALSE),
+('math_reasoning', 'Multi-step math problems', 300, FALSE);
+
+INSERT INTO runs (model_id, fixture_id, started_at, finished_at, status, batch_size, max_tokens) VALUES
+(1, 1, '2023-10-01 10:00:00', '2023-10-01 10:05:00', 'completed', 4, 128),
+(1, 1, '2023-10-01 10:10:00', '2023-10-01 10:15:00', 'completed', 4, 128),
+(1, 1, '2023-10-01 10:20:00', '2023-10-01 10:25:00', 'completed', 4, 128),
+(1, 1, '2023-10-01 10:30:00', '2023-10-01 10:35:00', 'completed', 4, 128),
+(1, 1, '2023-10-01 10:40:00', '2023-10-01 10:45:00', 'completed', 4, 128),
+(1, 1, '2023-10-01 10:50:00', '2023-10-01 10:55:00', 'completed', 4, 128),
+(1, 1, '2023-10-01 11:00:00', '2023-10-01 11:05:00', 'completed', 4, 128),
+(1, 1, '2023-10-01 11:10:00', '2023-10-01 11:15:00', 'completed', 4, 128),
+(1, 2, '2023-10-01 12:00:00', '2023-10-01 12:10:00', 'completed', 2, 512),
+(1, 2, '2023-10-01 12:15:00', '2023-10-01 12:25:00', 'completed', 2, 512),
+(1, 2, '2023-10-01 12:30:00', '2023-10-01 12:40:00', 'completed', 2, 512),
+(1, 2, '2023-10-01 12:45:00', '2023-10-01 12:55:00', 'completed', 2, 512),
+(1, 2, '2023-10-01 13:00:00', '2023-10-01 13:10:00', 'completed', 2, 512),
+(1, 2, '2023-10-01 13:15:00', '2023-10-01 13:25:00', 'completed', 2, 512),
+(1, 2, '2023-10-01 13:30:00', '2023-10-01 13:40:00', 'completed', 2, 512),
+(1, 2, '2023-10-01 13:45:00', '2023-10-01 13:55:00', 'completed', 2, 512),
+(1, 3, '2023-10-01 14:00:00', '2023-10-01 14:05:00', 'completed', 8, 256),
+(1, 3, '2023-10-01 14:10:00', '2023-10-01 14:15:00', 'completed', 8, 256),
+(1, 3, '2023-10-01 14:20:00', '2023-10-01 14:25:00', 'completed', 8, 256),
+(1, 3, '2023-10-01 14:30:00', '2023-10-01 14:35:00', 'completed', 8, 256),
+(1, 3, '2023-10-01 14:40:00', '2023-10-01 14:45:00', 'completed', 8, 256),
+(1, 3, '2023-10-01 14:50:00', '2023-10-01 14:55:00', 'completed', 8, 256),
+(1, 3, '2023-10-01 15:00:00', '2023-10-01 15:05:00', 'completed', 8, 256),
+(1, 3, '2023-10-01 15:10:00', '2023-10-01 15:15:00', 'completed', 8, 256),
+(1, 4, '2023-10-01 16:00:00', '2023-10-01 16:05:00', 'completed', 4, 256),
+(1, 4, '2023-10-01 16:10:00', '2023-10-01 16:15:00', 'completed', 4, 256),
+(1, 4, '2023-10-01 16:20:00', '2023-10-01 16:25:00', 'completed', 4, 256),
+(1, 4, '2023-10-01 16:30:00', '2023-10-01 16:35:00', 'completed', 4, 256),
+(1, 4, '2023-10-01 16:40:00', '2023-10-01 16:45:00', 'completed', 4, 256),
+(1, 4, '2023-10-01 16:50:00', '2023-10-01 16:55:00', 'completed', 4, 256),
+(1, 4, '2023-10-01 17:00:00', '2023-10-01 17:05:00', 'completed', 4, 256),
+(1, 4, '2023-10-01 17:10:00', '2023-10-01 17:15:00', 'completed', 4, 256),
+(2, 1, '2023-10-02 10:00:00', '2023-10-02 10:04:00', 'completed', 4, 128),
+(2, 1, '2023-10-02 10:10:00', '2023-10-02 10:14:00', 'completed', 4, 128),
+(2, 1, '2023-10-02 10:20:00', '2023-10-02 10:24:00', 'completed', 4, 128),
+(2, 1, '2023-10-02 10:30:00', '2023-10-02 10:34:00', 'completed', 4, 128),
+(2, 1, '2023-10-02 10:40:00', '2023-10-02 10:44:00', 'completed', 4, 128),
+(2, 1, '2023-10-02 10:50:00', '2023-10-02 10:54:00', 'completed', 4, 128),
+(2, 1, '2023-10-02 11:00:00', '2023-10-02 11:04:00', 'completed', 4, 128),
+(2, 1, '2023-10-02 11:10:00', '2023-10-02 11:14:00', 'completed', 4, 128),
+(2, 2, '2023-10-02 12:00:00', '2023-10-02 12:08:00', 'completed', 2, 512),
+(2, 2, '2023-10-02 12:15:00', '2023-10-02 12:23:00', 'completed', 2, 512),
+(2, 2, '2023-10-02 12:30:00', '2023-10-02 12:38:00', 'completed', 2, 512),
+(2, 2, '2023-10-02 12:45:00', '2023-10-02 12:53:00', 'completed', 2, 512),
+(2, 2, '2023-10-02 13:00
