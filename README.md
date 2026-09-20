@@ -61,6 +61,40 @@ Structured output reaches ~144 tok/s; prose/story is CPU-of-the-model-limited at
 ~71–86 tok/s. `gsm8k_cot` (8-shot, lm-evaluation-harness, 50 samples): **0.96**; RULER NIAH
 retrieval at 8K/32K/64K: 3/3 each.
 
+## RTX 5060 Ti 16 GB and other 16 GB `sm_120` cards
+
+The fork is validated on RTX 5080 16 GB. A third-party run (2026-09-20) on a
+GeForce RTX 5060 Ti 16 GB with **this fork and the same public artifact** confirms
+the card is compatible:
+
+- stable text context **98,304 (96K)** with one worker — 124,928 OOMs there
+  because the desktop/display takes ~440 MiB;
+- MTP3 decode ~**32 tok/s** on Russian prose (content-dependent — code/JSON is
+  much faster), prefill ~**620 tok/s** at a 20K prompt;
+- native vision in a **separate 32,768-token** server.
+
+Full report (Russian, as received, with our verification status):
+[validation/third-party/5060ti-20260920.md](validation/third-party/5060ti-20260920.md).
+
+Comparison across 16 GB setups. These are **different runtimes, harnesses and
+content mixes**, shown for orientation only:
+
+| Setup | GPU | Runtime / artifact | Text context | MTP3 decode | Vision | Source |
+|---|---|---|---:|---:|---|---|
+| This fork | RTX 5080 16 GB | `sm_120a` min-Q4 + MTP-Q4/Vision-Q4 | **124,928** | 71–144 tok/s | 32,768 | local validation |
+| This fork (third-party) | RTX 5060 Ti 16 GB | same fork + artifact | 98,304 | ~32 tok/s prose | 32,768 (separate) | report, 2026-09-20 |
+| [freedomNTD/ninfer-5060ti](https://github.com/freedomNTD/ninfer-5060ti) | RTX 5060 Ti 16 GB | aljazceru fork + aaaljaz min-Q4 (no MTP-Q4, no vision) | ~49,152 | 48.8 tok/s, short answers | — | their README |
+| [ruwwww/ninfer-5060ti](https://github.com/ruwwww/ninfer-5060ti) (`rtx-5060ti`) | RTX 5060 Ti 16 GB | upstream-style; 27B numbers are RTX 5090-only | 262,144 (9B) | 119–132 tok/s (9B) | 9B only | their README |
+| aljaz A5000 fork | RTX A5000 16 GB | sm_86 min-Q4 | 122,880 | 22.4 tok/s | — | local validation |
+
+Against the closest sibling — `freedomNTD/ninfer-5060ti`, the same 27B min-Q4 on
+a 5060 Ti — this fork plus its artifact reaches roughly **twice the context**
+(96K vs ~49K) and adds native vision and an MTP-Q4 head. Its 48.8 tok/s is a
+short-answer/structured figure (high MTP acceptance) and is not comparable to
+the prose figure above, so no speed ranking is drawn from it. The
+`ruwwww/ninfer-5060ti` branch publishes RTX 5060 Ti numbers only for its 9B
+artifacts, so a 27B-on-5060-Ti comparison is not possible there.
+
 ## Install
 
 Build the runtime image (CUDA 13.1, `sm_120a`):
@@ -84,7 +118,8 @@ prebuilt artifact from Hugging Face.
 
 ## Status and limitations
 
-- Validated on RTX 5080 16 GB. Other `sm_120` 16 GB cards are **expected
+- Validated on RTX 5080 16 GB. An RTX 5060 Ti 16 GB is confirmed compatible by a
+  third-party run (see above); other `sm_120` 16 GB cards are **expected
   compatible, not hardware-tested**.
 - Text + MTP3 safe ceiling is 124,928 tokens (OOM between 128,000 and 129,024);
   MTP0 reaches 131,072. With `--prefill-chunk 256` the ceiling is 124,928
