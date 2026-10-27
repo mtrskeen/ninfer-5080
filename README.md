@@ -141,3 +141,67 @@ prebuilt artifact from Hugging Face.
 - Blackwell MTP-Q4/Vision-Q4, 16 GB profile and validation: this fork.
 
 Apache-2.0. Upstream NInfer's own license and documentation remain in place.
+
+## Работа с репозиторием
+
+Процедуры перенесены из AGENTS.md; границы проекта остаются в AGENTS.md.
+
+Run a focused set of checks sufficient to support the changed behavior and its material claims.
+The following are typical choices, not a cumulative checklist:
+
+| Change | Relevant evidence |
+|---|---|
+| documentation | affected active-link/stale-reference review and `git diff --check` |
+| C++ runtime/API | affected explicit targets and meaningful tests |
+| Python tooling | `py_compile` and affected Python tests |
+| `.ninfer` reader/converter/binder | affected contract tests and a real artifact when semantics require it |
+| CUDA math | independent numerical oracle at relevant shapes |
+| memory/lifetime | the affected execution; sanitizer only for a concrete lifetime risk |
+| performance | measurement at the claimed scope; attribution tools only when needed |
+| serving | affected OpenAI/Anthropic schema tests and observable request/stream behavior |
+
+Do not replace weak verification with low-value tests. State clearly when a relevant check could not
+run and why.
+
+## Local environment
+
+Use unrestricted build-tool parallelism for repository compilation. Invoke CMake builds as
+`cmake --build <build-dir> -j`; do not supply a numeric job limit such as `-j2` or `-j32`.
+
+These are conventional project resources, not a checklist of resources every task must use:
+
+| Purpose | Path |
+|---|---|
+| repository | current checkout |
+| Python 3.11 | `python3` in the selected maintainer environment |
+| BF16 source checkpoint | explicit local checkpoint directory |
+| product artifact | `out/qwen3_6_27b.ninfer` |
+| conversion report | `out/qwen3_6_27b.ninfer.conversion.json` |
+| normal build | `build/` |
+| profiler output | `profiles/ncu/`, `profiles/nsys/`, `profiles/bench/` |
+| hardware/toolchain | RTX 5090, `sm_120a`, CUDA 13.1 |
+
+Use the selected Python 3.11 interpreter explicitly. Do not install or upgrade dependencies unless
+the task requires it. Never select an artifact by glob, modification time, or an unqualified
+“latest” name. Large artifacts, source checkpoints, and profiler outputs are local prerequisites;
+do not download or regenerate them unless that work is in scope.
+
+```bash
+PYTHON=python3
+MODEL=/path/to/Qwen3.6-27B
+NINFER_WEIGHTS=out/qwen3_6_27b.ninfer
+```
+
+
+
+## Commits
+
+Create a commit only when the user requests one. Use Conventional Commit-style subjects, for
+example:
+
+```text
+feat(engine): cut over the registered target to native artifacts
+```
+
+Use concise lowercase types consistent with repository history (`feat`, `fix`, `perf`, `bench`,
+`test`, `build`, `refactor`, `docs`, `chore`).
